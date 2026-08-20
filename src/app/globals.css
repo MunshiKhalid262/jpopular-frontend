@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 is CSS-first: design tokens live here, not in a tailwind.config
+ * file. Defined before any component library is added so generated components
+ * inherit real tokens. See ARCHITECTURE-V1.md section 3.2.
+ */
+@theme {
+  /* Neutrals carry a slight cool bias rather than pure grey. */
+  --color-surface: #ffffff;
+  --color-canvas: #f4f6f7;
+  --color-line: #dde3e6;
+  --color-ink: #161f24;
+  --color-ink-muted: #5b6a72;
+  --color-ink-subtle: #8595a0;
+
+  /* Deep teal: reads technical, suits an electric-mobility retailer. */
+  --color-brand: #0b6e63;
+  --color-brand-strong: #08564e;
+  --color-brand-soft: #e4f0ee;
+
+  --color-danger: #b3261e;
+  --color-danger-soft: #fdeceb;
+  --color-success: #1a7f4b;
+  --color-success-soft: #e7f5ed;
+  --color-warning: #a66300;
+
+  --radius-control: 0.5rem;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Always show a visible focus ring for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
