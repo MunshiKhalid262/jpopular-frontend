@@ -4,7 +4,7 @@ Next.js 16 (App Router) admin interface for the JPopular business management sys
 
 Architecture and business decisions live in `ARCHITECTURE-V1.md` (one level up, outside this repo).
 
-**Current state:** login, route protection, permission-driven navigation, and minimal Admin user management. No business modules yet.
+**Current state:** login, route protection, permission-driven navigation, Admin user management, and Catalog (products, categories, brands). Inventory, invoicing, customers and payments are later stages.
 
 ## Requirements
 
@@ -82,6 +82,34 @@ if (can(PERMISSIONS.usersManage)) { /* show the button */ }
 In Server Components, use `getCurrentUser()` with `hasPermission()`.
 
 Hiding UI is cosmetic — a hidden route typed manually still returns 403.
+
+## Money formatting
+
+The API sends money, GST rates and quantities as DECIMAL **strings**
+("84999.00"). `src/lib/money.ts` formats them by string manipulation and never
+calls `Number()` on them, so no value passes through JavaScript floating point:
+
+```ts
+formatInr("119999.00")  // "₹1,19,999.00"  (Indian digit grouping)
+formatPercent("18.00")  // "18%"
+formatQuantity("25.000") // "25"
+```
+
+Display only — all business-sensitive arithmetic happens server-side with bcmath.
+
+## Catalog notes
+
+- **No `current_stock` input exists** on the product form. Opening stock and
+  adjustments belong to Inventory so every change leaves an auditable movement;
+  the API ignores the field anyway.
+- **Purchase price** renders only when the user holds
+  `products.view_purchase_price`. The backend also omits the field from its
+  responses, so this is UX consistency rather than the control itself.
+- Tables are hand-rolled rather than using TanStack Table: sorting, grouping and
+  virtualisation are not needed yet. The dependency can be added when a real
+  grid requirement appears.
+- List pages are Server Components that fetch server-side; forms are Client
+  Components using react-hook-form + zod, posting through the `/api/v1` proxy.
 
 ## Scripts
 

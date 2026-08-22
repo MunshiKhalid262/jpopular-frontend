@@ -31,6 +31,14 @@ const NAV: NavGroup[] = [
     items: [{ href: "/dashboard", label: "Dashboard", permission: PERMISSIONS.dashboardView }],
   },
   {
+    heading: "Catalog",
+    items: [
+      { href: "/products", label: "Products", permission: PERMISSIONS.productsView },
+      { href: "/categories", label: "Categories", permission: PERMISSIONS.categoriesView },
+      { href: "/brands", label: "Brands", permission: PERMISSIONS.brandsView },
+    ],
+  },
+  {
     heading: "Administration",
     items: [{ href: "/users", label: "Users", permission: PERMISSIONS.usersView }],
   },
@@ -46,7 +54,10 @@ export function Sidebar() {
   })).filter((group) => group.items.length > 0);
 
   return (
-    <nav aria-label="Main" className="flex w-56 shrink-0 flex-col gap-6 border-r border-line bg-surface px-3 py-5">
+    <nav
+      aria-label="Main"
+      className="flex w-56 shrink-0 flex-col gap-6 border-r border-line bg-surface px-3 py-5"
+    >
       <div className="flex items-center gap-2.5 px-2">
         <span
           aria-hidden="true"
