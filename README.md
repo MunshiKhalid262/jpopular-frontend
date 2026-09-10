@@ -140,3 +140,112 @@ src/
 
 Design tokens live in `src/app/globals.css` under `@theme` — Tailwind v4 is
 CSS-first, so there is no `tailwind.config` file.
+
+## CI/CD
+
+Two separate GitHub Actions workflows. CI never deploys; deployment never runs
+outside `main`.
+
+### Triggers
+
+| Workflow | Runs on | Does |
+|---|---|---|
+| `.github/workflows/ci.yml` | PRs targeting `develop` or `main`, pushes to `develop` | `npm ci`, lint, `tsc --noEmit`, production build |
+| `.github/workflows/deploy.yml` | **pushes to `main`** (plus manual `workflow_dispatch`) | re-verifies, then deploys to the VPS |
+
+Pushes to `develop` and `feature/*`, and pull requests, are validation only —
+they can never reach production.
+
+### Branch strategy
+
+```
+feature/*  ─PR─▶  develop  ─PR─▶  main  ──▶  automatic production deploy
+                  (CI only)              (CI + deploy)
+```
+
+### CI details
+
+Node 20 (Next.js 16 requires >= 20.9), with the npm cache keyed on
+`package-lock.json`. `API_BASE_URL` is set to the harmless placeholder
+`http://127.0.0.1:8000/api/v1` — it is server-only (no `NEXT_PUBLIC_` prefix), so
+it is never compiled into the client bundle, and the real value exists only in
+the server's `.env.production`.
+
+CI references **no secrets at all**.
+
+`tsc --noEmit` runs separately from `next build` even though the build also
+type-checks, so a type error is reported as a type error rather than as a build
+failure.
+
+### Production deployment
+
+Runs only after the `verify` job (lint + types + build) passes, so a `main` that
+cannot build is never shipped. Concurrency group
+`jpopular-frontend-production` with `cancel-in-progress: false` — a deploy is
+never interrupted part-way through a build or a PM2 restart.
+
+On the VPS, inside `/var/www/jpopular/jpopular-frontend`:
+
+1. `git fetch --prune origin main`, `git checkout main`, `git reset --hard origin/main`
+2. re-assert `.env.production` still exists
+3. `npm ci`
+4. `npm run build`
+5. `pm2 restart jpopular-frontend --update-env`
+6. `pm2 save`
+7. health check against `https://jpopular.in/login` from the runner (accepts 200,
+   or a 3xx redirect for a visitor who still holds a session cookie)
+
+**What deployment never does:** create, overwrite, or read `.env.production`;
+put `API_BASE_URL` into source control; or run `git clean`. `git reset --hard`
+rewrites tracked files only, and `.env.production` is git-ignored, so it survives
+untouched — the script asserts its presence both before and after the reset.
+
+If `npm ci` or the build fails, the workflow fails visibly and PM2 is **never
+restarted**, so the previously built app keeps serving.
+
+> Because the reset is deterministic, any manual edit to a *tracked* file on the
+> server is discarded on the next deploy. That is intentional — the server always
+> matches `origin/main`.
+
+### Required GitHub secrets
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `VPS_HOST` | yes | server hostname or IP |
+| `VPS_USER` | yes | deployment user (e.g. `deploy`) |
+| `VPS_SSH_KEY` | yes | **private** key for that user, PEM, full contents |
+| `VPS_PORT` | no | SSH port; defaults to `22` |
+| `VPS_SSH_KNOWN_HOSTS` | recommended | `ssh-keyscan` output, to pin the host key instead of trusting on first use |
+
+Never store `API_BASE_URL`, the production `.env.production`, or any credential
+as a workflow secret — deployment does not need them.
+
+### Production paths
+
+| | |
+|---|---|
+| Frontend | `/var/www/jpopular/jpopular-frontend` |
+| Site | `https://jpopular.in` |
+| PM2 process | `jpopular-frontend` |
+
+### Rollback
+
+Deployment is a plain checkout, not a symlinked release, so rollback is a manual
+git operation.
+
+```bash
+ssh deploy@<host>
+cd /var/www/jpopular/jpopular-frontend
+
+git log --oneline -10                  # find the last known-good commit
+git reset --hard <good-sha>
+npm ci
+npm run build
+pm2 restart jpopular-frontend --update-env
+pm2 save
+
+curl -I https://jpopular.in/login
+```
+
+If the frontend rollback is because of a backend API change, roll the backend
+back too — the two are versioned together on `main`.

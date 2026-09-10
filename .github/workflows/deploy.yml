@@ -1,0 +1,254 @@
+name: Deploy to production
+
+# Production deploys happen ONLY from main. Pushes to develop, feature
+# branches, and pull requests never reach this workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# cancel-in-progress is deliberately FALSE. Cancelling mid-deploy could leave
+# the build half-written or PM2 pointing at a partial .next directory.
+concurrency:
+  group: jpopular-frontend-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify main before deploying
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      API_BASE_URL: http://127.0.0.1:8000/api/v1
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+  deploy:
+    name: Deploy to VPS
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: https://jpopular.in
+
+    env:
+      DEPLOY_PATH: /var/www/jpopular/jpopular-frontend
+      PM2_APP: jpopular-frontend
+      HEALTH_URL: https://jpopular.in/login
+
+    steps:
+      - name: Guard - refuse to deploy anything but main
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Refusing to deploy from ${GITHUB_REF}. Production deploys only from main."
+            exit 1
+          fi
+
+      - name: Deployment summary
+        run: |
+          echo "Application : jpopular-frontend"
+          echo "Environment : production"
+          echo "Target      : ${DEPLOY_PATH}"
+          echo "PM2 process : ${PM2_APP}"
+          echo "Commit      : ${GITHUB_SHA}"
+          echo "Triggered by: ${GITHUB_ACTOR}"
+          echo "Started     : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+        run: |
+          MISSING=""
+          [ -n "${VPS_HOST}" ]    || MISSING="${MISSING} VPS_HOST"
+          [ -n "${VPS_USER}" ]    || MISSING="${MISSING} VPS_USER"
+          [ -n "${VPS_SSH_KEY}" ] || MISSING="${MISSING} VPS_SSH_KEY"
+
+          if [ -n "${MISSING}" ]; then
+            echo "::error::Missing required secrets:${MISSING}"
+            exit 1
+          fi
+
+          PORT="${VPS_PORT:-22}"
+          echo "SSH_PORT=${PORT}" >> "$GITHUB_ENV"
+          echo "SSH_TARGET=${VPS_USER}@${VPS_HOST}" >> "$GITHUB_ENV"
+          echo "Using SSH port ${PORT}."
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          if [ -n "${VPS_SSH_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${VPS_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+            echo "Host key pinned from VPS_SSH_KNOWN_HOSTS."
+          else
+            ssh-keyscan -p "${PORT}" -H "${VPS_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+            echo "::warning::VPS_SSH_KNOWN_HOSTS is not set; the host key was accepted on first use. Add it to pin the host key."
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify SSH connectivity
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes \
+            "${SSH_TARGET}" 'echo "Connected as $(whoami) on $(hostname)"'
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o BatchMode=yes \
+            "${SSH_TARGET}" \
+            "bash -s -- '${GITHUB_SHA}' '${DEPLOY_PATH}' '${PM2_APP}'" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          COMMIT_SHA="$1"
+          APP_DIR="$2"
+          PM2_APP="$3"
+
+          echo "==> Deploying ${COMMIT_SHA} into ${APP_DIR}"
+          cd "${APP_DIR}"
+
+          on_exit() {
+            local code=$?
+            if [ "${code}" -ne 0 ]; then
+              echo "==> DEPLOYMENT FAILED with exit code ${code}"
+              echo "    The previously built app remains served by PM2 unless the"
+              echo "    failure happened during restart. See ROLLBACK in README.md."
+            fi
+            exit "${code}"
+          }
+          trap on_exit EXIT
+
+          echo "==> Sanity checks"
+          test -f package.json     || { echo "ERROR: package.json not found; wrong directory?"; exit 1; }
+          test -d .git             || { echo "ERROR: not a git repository."; exit 1; }
+          # The server's own environment file must already exist. Deployment
+          # never creates, overwrites, or reads it.
+          test -f .env.production  || { echo "ERROR: .env.production missing. Deployment does not create it."; exit 1; }
+          command -v pm2 >/dev/null || { echo "ERROR: pm2 not found on PATH for this user."; exit 1; }
+          echo "    ok"
+
+          echo "==> Current commit: $(git rev-parse --short HEAD)"
+
+          echo "==> Fetching origin"
+          git fetch --prune origin main
+
+          echo "==> Checking out main"
+          git checkout main
+
+          echo "==> Resetting to origin/main (deterministic, not 'whatever is checked out')"
+          # TRACKED files only. .env.production is git-ignored, so it survives
+          # untouched, as does anything else intentionally untracked.
+          # `git clean` is deliberately NOT used: it would delete exactly those
+          # production files.
+          git reset --hard "origin/main"
+
+          DEPLOYED_SHA="$(git rev-parse HEAD)"
+          echo "==> Now at: $(git rev-parse --short HEAD)"
+
+          if [ "${DEPLOYED_SHA}" != "${COMMIT_SHA}" ]; then
+            echo "WARNING: origin/main is ${DEPLOYED_SHA}, workflow commit was ${COMMIT_SHA}."
+            echo "         A newer commit landed on main; deploying origin/main."
+          fi
+
+          echo "==> Confirming .env.production is still present after reset"
+          test -f .env.production || { echo "ERROR: .env.production disappeared."; exit 1; }
+          echo "    ok"
+
+          echo "==> Installing dependencies (npm ci)"
+          # Dev dependencies are required: the Next.js production build needs
+          # TypeScript, ESLint config and Tailwind at build time.
+          npm ci
+
+          echo "==> Building"
+          # Next reads .env.production automatically for a production build.
+          NEXT_TELEMETRY_DISABLED=1 npm run build
+
+          echo "==> Restarting PM2 process ${PM2_APP}"
+          if pm2 describe "${PM2_APP}" >/dev/null 2>&1; then
+            pm2 restart "${PM2_APP}" --update-env
+          else
+            echo "ERROR: PM2 process '${PM2_APP}' does not exist."
+            echo "       Start it once manually, then re-run this deployment."
+            exit 1
+          fi
+
+          echo "==> Saving PM2 process list"
+          pm2 save || echo "WARNING: pm2 save failed; the process list may not survive a reboot."
+
+          echo "==> PM2 status"
+          pm2 describe "${PM2_APP}" | grep -E "status|uptime|restarts" || true
+
+          echo "==> Deployment steps completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          REMOTE_SCRIPT
+
+      - name: Health check
+        run: |
+          echo "Checking ${HEALTH_URL}"
+          ATTEMPTS=15
+          DELAY=5
+
+          for i in $(seq 1 "${ATTEMPTS}"); do
+            STATUS=$(curl -s -o /tmp/fe_body.txt -w '%{http_code}' \
+                       --max-time 10 "${HEALTH_URL}" || echo "000")
+
+            # /login renders for an unauthenticated visitor, so 200 is expected.
+            # A 3xx is also acceptable: proxy.ts redirects a visitor who still
+            # holds a session cookie straight to /dashboard.
+            case "${STATUS}" in
+              200|301|302|307|308)
+                echo "Health check passed on attempt ${i}: HTTP ${STATUS}"
+                exit 0
+                ;;
+            esac
+
+            echo "Attempt ${i}/${ATTEMPTS}: HTTP ${STATUS}. Retrying in ${DELAY}s..."
+            sleep "${DELAY}"
+          done
+
+          echo "::error::Health check failed after ${ATTEMPTS} attempts. ${HEALTH_URL} did not respond successfully."
+          exit 1
+
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "Frontend deployment SUCCEEDED for ${GITHUB_SHA}"
+          else
+            echo "Frontend deployment FAILED for ${GITHUB_SHA} (status: ${{ job.status }})"
+            echo "See ROLLBACK in README.md if production is left in a bad state."
+          fi
+
+      - name: Remove SSH key from runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

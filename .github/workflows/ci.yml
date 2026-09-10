@@ -1,0 +1,57 @@
+name: CI
+
+# Validation only. This workflow never deploys -- see deploy.yml.
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Node 20 lint, types and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Harmless placeholder. The real value lives only in the server's
+      # .env.production. This is SERVER-only (no NEXT_PUBLIC_ prefix), so it is
+      # never compiled into the client bundle -- but a build still wants it set.
+      API_BASE_URL: http://127.0.0.1:8000/api/v1
+      # Skip Next.js telemetry on CI runners.
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          # Next.js 16 requires Node >= 20.9.0; the 20.x line satisfies that.
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        # `npm ci` installs exactly the lockfile, and fails if package.json and
+        # package-lock.json have drifted apart.
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check
+        # `next build` type-checks too, but running tsc separately means a type
+        # error is reported as a type error rather than a build failure.
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
