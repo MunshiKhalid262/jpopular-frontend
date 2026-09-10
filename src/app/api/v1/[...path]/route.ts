@@ -46,12 +46,19 @@ async function proxy(request: Request, path: string[]): Promise<Response> {
   };
 
   const contentType = request.headers.get("content-type");
-  let body: string | undefined;
+  let body: ArrayBuffer | undefined;
 
   if (request.method !== "GET" && request.method !== "HEAD") {
-    body = await request.text();
+    // Read as BYTES, never as text. `request.text()` decodes the body as
+    // UTF-8, and every byte sequence that is not valid UTF-8 is replaced with
+    // U+FFFD -- which destroys binary uploads irreversibly. A PNG's leading
+    // 0x89 becomes EF BF BD, so the upstream sees application/octet-stream
+    // instead of image/png and rejects a perfectly valid file.
+    body = await request.arrayBuffer();
 
     if (contentType) {
+      // Forwarded verbatim because it carries the multipart boundary, without
+      // which the upstream cannot parse the body at all.
       headers["Content-Type"] = contentType;
     }
   }
