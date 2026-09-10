@@ -1,9 +1,11 @@
 import {
   Boxes,
+  History,
   LayoutDashboard,
   Package,
   Tags,
   Users,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,9 +19,9 @@ import type { Crumb } from "@/components/ui/page-header";
  * breadcrumbs from it, so the two can never disagree about what a page is
  * called.
  *
- * Only shipped modules appear here. Inventory, invoicing, customers, payments
- * and reports are deliberately absent until those slices exist -- a nav item
- * that leads nowhere is worse than no nav item.
+ * Only shipped modules appear here. Invoicing, customers, payments and reports
+ * are deliberately absent until those slices exist -- a nav item that leads
+ * nowhere is worse than no nav item.
  */
 
 export type NavItem = {
@@ -73,6 +75,23 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    heading: "Inventory",
+    items: [
+      {
+        href: "/inventory",
+        label: "Stock",
+        icon: Warehouse,
+        permission: PERMISSIONS.inventoryView,
+      },
+      {
+        href: "/inventory/movements",
+        label: "Movements",
+        icon: History,
+        permission: PERMISSIONS.inventoryView,
+      },
+    ],
+  },
+  {
     heading: "Administration",
     items: [
       {
@@ -85,13 +104,39 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** True when `pathname` is the item's page or a page beneath it. */
-export function isNavItemActive(item: NavItem, pathname: string): boolean {
-  const prefixes = [item.href, ...(item.matches ?? [])];
+function prefixesOf(item: NavItem): string[] {
+  return [item.href, ...(item.matches ?? [])];
+}
 
-  return prefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+function matches(prefix: string, pathname: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+/**
+ * True when `pathname` is the item's page or a page beneath it, and no MORE
+ * SPECIFIC item also claims it.
+ *
+ * The specificity check is what stops two items lighting up at once:
+ * `/inventory` is a prefix of `/inventory/movements`, so a plain
+ * startsWith would highlight Stock and Movements together. The longest
+ * matching prefix across the whole nav wins, which keeps this correct for any
+ * nested route added later without needing per-item flags.
+ */
+export function isNavItemActive(item: NavItem, pathname: string): boolean {
+  const own = prefixesOf(item).filter((prefix) => matches(prefix, pathname));
+
+  if (own.length === 0) {
+    return false;
+  }
+
+  const longestOwn = Math.max(...own.map((prefix) => prefix.length));
+
+  const longestAnywhere = NAV_GROUPS.flatMap((group) => group.items)
+    .flatMap(prefixesOf)
+    .filter((prefix) => matches(prefix, pathname))
+    .reduce((longest, prefix) => Math.max(longest, prefix.length), 0);
+
+  return longestOwn === longestAnywhere;
 }
 
 /* ------------------------------------------------------------------ titles */
@@ -118,6 +163,10 @@ const ROUTE_META: Array<[RegExp, RouteMeta]> = [
   [/^\/brands\/new$/, { title: "Add brand", parent: "/brands" }],
   [/^\/brands\/[^/]+\/edit$/, { title: "Edit brand", parent: "/brands" }],
 
+  // Most specific first: /inventory would otherwise swallow its own subpage.
+  [/^\/inventory\/movements$/, { title: "Stock movements", parent: "/inventory" }],
+  [/^\/inventory$/, { title: "Stock" }],
+
   [/^\/users$/, { title: "Users" }],
   [/^\/users\/new$/, { title: "Add user", parent: "/users" }],
   [/^\/users\/[^/]+\/edit$/, { title: "Edit user", parent: "/users" }],
@@ -127,6 +176,7 @@ const SECTION_LABELS: Record<string, string> = {
   "/products": "Products",
   "/categories": "Categories",
   "/brands": "Brands",
+  "/inventory": "Stock",
   "/users": "Users",
   "/dashboard": "Dashboard",
 };
