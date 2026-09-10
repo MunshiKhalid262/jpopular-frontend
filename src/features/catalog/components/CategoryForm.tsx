@@ -5,8 +5,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
-import { Field } from "@/components/ui/Field";
-import { Button, FormAlert, TextInput } from "@/components/ui/controls";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field, FieldSpan, FormActions, FormSection } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/feedback";
+import { Checkbox, Input, Textarea } from "@/components/ui/input";
+import { notify } from "@/components/ui/toast";
 import { postJson, putJson } from "@/features/catalog/client";
 import { categorySchema, type CategoryInput } from "@/features/catalog/schemas";
 import type { Category } from "@/features/catalog/types";
@@ -43,10 +47,10 @@ export function CategoryForm({ category }: { category?: Category }) {
       : await postJson("/categories", body);
 
     if (!result.ok) {
-      // Map server field errors back onto the form; the backend is the
+      // Map server field errors back onto the form: the backend is the
       // authority even where the client already validated.
       for (const [field, messages] of Object.entries(result.failure.errors)) {
-        if (field === "name" || field === "description") {
+        if ((field === "name" || field === "description") && messages[0]) {
           setError(field, { message: messages[0] });
         }
       }
@@ -56,55 +60,76 @@ export function CategoryForm({ category }: { category?: Category }) {
       return;
     }
 
+    notify.success(category ? "Category updated" : "Category created", {
+      description: values.name,
+    });
+
     router.push("/categories");
     router.refresh();
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex max-w-lg flex-col gap-5" noValidate>
-      {formError ? <FormAlert message={formError} /> : null}
+    <Card className="overflow-hidden">
+      <form onSubmit={handleSubmit(onSubmit)} className="px-6 pt-6" noValidate>
+        {formError ? (
+          <div className="mb-5">
+            <FormAlert message={formError} />
+          </div>
+        ) : null}
 
-      <Field label="Name" error={errors.name?.message}>
-        {(props) => (
-          <TextInput {...props} {...register("name")} disabled={isSubmitting} autoFocus />
-        )}
-      </Field>
-
-      <Field label="Description" error={errors.description?.message} hint="Optional.">
-        {(props) => (
-          <textarea
-            {...props}
-            {...register("description")}
-            rows={3}
-            disabled={isSubmitting}
-            className="w-full rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle disabled:bg-canvas"
-          />
-        )}
-      </Field>
-
-      <label className="flex items-center gap-2.5 text-sm text-ink">
-        <input
-          type="checkbox"
-          {...register("is_active")}
-          disabled={isSubmitting}
-          className="h-4 w-4 rounded border-line"
-        />
-        Active
-      </label>
-
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving…" : category ? "Save changes" : "Create category"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => router.push("/categories")}
-          disabled={isSubmitting}
+        <FormSection
+          title="Category details"
+          description="Categories group products for filtering, and each product must belong to one."
         >
-          Cancel
-        </Button>
-      </div>
-    </form>
+          <FieldSpan>
+            <Field label="Name" error={errors.name?.message} required>
+              {(props) => (
+                <Input
+                  {...props}
+                  {...register("name")}
+                  placeholder="e.g. Electric Scooters"
+                  disabled={isSubmitting}
+                  autoFocus
+                />
+              )}
+            </Field>
+          </FieldSpan>
+
+          <FieldSpan>
+            <Field
+              label="Description"
+              error={errors.description?.message}
+              hint="Optional. A short note about what belongs in this category."
+            >
+              {(props) => (
+                <Textarea {...props} {...register("description")} rows={3} disabled={isSubmitting} />
+              )}
+            </Field>
+          </FieldSpan>
+
+          <FieldSpan>
+            <Checkbox
+              label="Active"
+              description="Inactive categories cannot be assigned to new products."
+              {...register("is_active")}
+              disabled={isSubmitting}
+            />
+          </FieldSpan>
+        </FormSection>
+
+        <FormActions>
+          <Button
+            variant="secondary"
+            onClick={() => router.push("/categories")}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
+            {category ? "Save changes" : "Create category"}
+          </Button>
+        </FormActions>
+      </form>
+    </Card>
   );
 }

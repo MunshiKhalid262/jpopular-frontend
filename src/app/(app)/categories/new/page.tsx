@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { PermissionNotice } from "@/components/ui/table";
+import { PermissionNotice } from "@/components/ui/feedback";
+import { BackLink, PageHeader } from "@/components/ui/page-header";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
 import { CategoryForm } from "@/features/catalog/components/CategoryForm";
 
-export const metadata: Metadata = { title: "Add category · JPopular" };
+export const metadata: Metadata = { title: "Add category" };
 
 export default async function NewCategoryPage() {
   const user = await getCurrentUser();
@@ -18,17 +18,15 @@ export default async function NewCategoryPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <Link href="/categories" className="text-sm text-brand hover:text-brand-strong">
-          ← Back to categories
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink">Add category</h1>
-      </header>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <BackLink href="/categories">Back to categories</BackLink>
 
-      <div className="rounded-xl border border-line bg-surface p-6">
-        <CategoryForm />
-      </div>
+      <PageHeader
+        title="Add category"
+        description="A slug is generated from the name automatically."
+      />
+
+      <CategoryForm />
     </div>
   );
 }

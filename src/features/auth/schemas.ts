@@ -16,33 +16,83 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
-/** Matches Laravel's Password::defaults(): min 12, letters and numbers. */
-const passwordRule = z
-  .string()
-  .min(12, "Use at least 12 characters.")
-  .regex(/\p{L}/u, "Include at least one letter.")
-  .regex(/\d/, "Include at least one number.");
-
-export const createUserSchema = z
-  .object({
-    name: z.string().min(1, "Name is required.").max(120),
-    email: z.string().min(1, "Email is required.").email("Enter a valid email address.").max(160),
-    phone: z.string().max(20).optional().or(z.literal("")),
-    password: passwordRule,
-    password_confirmation: z.string().min(1, "Confirm the password."),
-    role: z.enum(["admin", "manager"]),
-  })
-  .refine((data) => data.password === data.password_confirmation, {
-    message: "The passwords do not match.",
-    path: ["password_confirmation"],
-  });
-
-export type CreateUserInput = z.infer<typeof createUserSchema>;
-
-export const updateUserSchema = z.object({
+/**
+ * One shape for both creating and editing a user.
+ *
+ * Password fields are optional here and required by the mode-aware refinement
+ * below. A single schema keeps `useForm` to one generic -- two schemas produced
+ * a union of form types that TypeScript could not resolve at the call site.
+ */
+const userFormBase = z.object({
   name: z.string().min(1, "Name is required.").max(120),
-  email: z.string().min(1, "Email is required.").email("Enter a valid email address.").max(160),
+  email: z
+    .string()
+    .min(1, "Email is required.")
+    .email("Enter a valid email address.")
+    .max(160),
   phone: z.string().max(20).optional().or(z.literal("")),
+  role: z.enum(["admin", "manager"], { message: "Choose a role." }),
+  password: z.string().optional().or(z.literal("")),
+  password_confirmation: z.string().optional().or(z.literal("")),
 });
 
-export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type UserFormInput = z.infer<typeof userFormBase>;
+
+/**
+ * Password rules match Laravel's Password::defaults(): at least 12 characters,
+ * containing a letter and a number. The breach check is server-side only --
+ * it needs a network call and the server performs it regardless.
+ */
+export function userFormSchema(mode: "create" | "edit") {
+  return userFormBase.superRefine((data, ctx) => {
+    const password = data.password ?? "";
+    const confirmation = data.password_confirmation ?? "";
+
+    // Required on create; on edit the fields are not rendered at all.
+    if (mode === "create" && password === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: "Password is required.",
+      });
+
+      return;
+    }
+
+    if (password === "") {
+      return;
+    }
+
+    if (password.length < 12) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: "Use at least 12 characters.",
+      });
+    }
+
+    if (!/\p{L}/u.test(password)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: "Include at least one letter.",
+      });
+    }
+
+    if (!/\d/.test(password)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: "Include at least one number.",
+      });
+    }
+
+    if (password !== confirmation) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password_confirmation"],
+        message: "The passwords do not match.",
+      });
+    }
+  });
+}

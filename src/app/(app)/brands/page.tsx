@@ -1,26 +1,34 @@
+import { Boxes, Plus, Search, X } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { Badge } from "@/components/ui/controls";
+import { StatusBadge } from "@/components/ui/badge";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { EmptyState, ErrorNotice, PermissionNotice } from "@/components/ui/feedback";
+import { SearchInput, Select } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import {
-  EmptyRow,
-  ErrorNotice,
-  PageHeader,
+  CodeText,
   Pagination,
-  PermissionNotice,
-  TableShell,
-  Td,
-  Th,
-  Thead,
+  TBody,
+  TD,
+  TDPrimary,
+  TH,
+  THead,
+  TR,
+  Table,
+  TableContainer,
+  TableEmptyRow,
 } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
-import { ArchiveButton } from "@/features/catalog/components/ArchiveButton";
+import { SimpleRowActions } from "@/features/catalog/components/SimpleRowActions";
 import type { Brand, Pagination as PaginationMeta } from "@/features/catalog/types";
 import { ApiError } from "@/lib/api-error";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Brands · JPopular" };
+export const metadata: Metadata = { title: "Brands" };
+
+const PER_PAGE = 25;
 
 export default async function BrandsPage({
   searchParams,
@@ -38,7 +46,7 @@ export default async function BrandsPage({
 
   const canManage = hasPermission(user.permissions, PERMISSIONS.brandsManage);
 
-  const query = new URLSearchParams({ per_page: "25" });
+  const query = new URLSearchParams({ per_page: String(PER_PAGE) });
   if (params.page) query.set("page", params.page);
   if (params.search) query.set("search", params.search);
   if (params.is_active) query.set("is_active", params.is_active);
@@ -64,123 +72,153 @@ export default async function BrandsPage({
     return `/brands?${next.toString()}`;
   };
 
+  const isFiltered = Boolean(params.search || params.is_active);
+  const columnCount = 4 + (canManage ? 1 : 0);
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         title="Brands"
-        description="Manufacturers and suppliers whose products you stock."
+        description="Manufacturers and suppliers whose products you stock. A brand in use cannot be archived."
         action={
           canManage ? (
-            <Link
-              href="/brands/new"
-              className="inline-flex items-center rounded-[--radius-control] bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-strong"
-            >
+            <ButtonLink href="/brands/new" variant="primary">
+              <Plus aria-hidden="true" />
               Add brand
-            </Link>
+            </ButtonLink>
           ) : null
         }
       />
 
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="search" className="text-xs font-medium text-ink-muted">
-            Search
+      <form method="get" action="/brands" className="flex flex-wrap items-center gap-2.5">
+        <div className="min-w-[15rem] flex-1 sm:max-w-xs">
+          <label htmlFor="brand-search" className="sr-only">
+            Search brands by name
           </label>
-          <input
-            id="search"
+          <SearchInput
+            id="brand-search"
             name="search"
             defaultValue={params.search ?? ""}
-            placeholder="Brand name"
-            className="w-56 rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
+            placeholder="Search brand name…"
+            icon={<Search />}
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="is_active" className="text-xs font-medium text-ink-muted">
-            Status
+        <div className="w-full sm:w-32">
+          <label htmlFor="brand-status" className="sr-only">
+            Filter by status
           </label>
-          <select
-            id="is_active"
-            name="is_active"
-            defaultValue={params.is_active ?? ""}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
-          >
-            <option value="">All</option>
+          <Select id="brand-status" name="is_active" defaultValue={params.is_active ?? ""}>
+            <option value="">Any status</option>
             <option value="1">Active</option>
             <option value="0">Inactive</option>
-          </select>
+          </Select>
         </div>
 
-        <button
-          type="submit"
-          className="rounded-[--radius-control] border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-canvas"
-        >
+        <Button type="submit" variant="secondary">
           Apply
-        </button>
+        </Button>
+
+        {isFiltered ? (
+          <ButtonLink href="/brands" variant="ghost">
+            <X aria-hidden="true" />
+            Reset
+          </ButtonLink>
+        ) : null}
       </form>
 
       {loadError ? (
         <ErrorNotice>{loadError}</ErrorNotice>
       ) : (
-        <>
-          <TableShell minWidth="42rem">
-            <Thead>
-              <tr>
-                <Th>Name</Th>
-                <Th>Slug</Th>
-                <Th align="right">Products</Th>
-                <Th>Status</Th>
-                {canManage ? <Th>Actions</Th> : null}
-              </tr>
-            </Thead>
-            <tbody>
+        <TableContainer>
+          <Table minWidth="40rem">
+            <THead>
+              <TH>Brand</TH>
+              <TH>Slug</TH>
+              <TH align="right">Products</TH>
+              <TH>Status</TH>
+              {canManage ? (
+                <TH align="right" srOnly>
+                  Actions
+                </TH>
+              ) : null}
+            </THead>
+
+            <TBody>
               {brands.length === 0 ? (
-                <EmptyRow colSpan={canManage ? 5 : 4}>No brands found.</EmptyRow>
+                <TableEmptyRow colSpan={columnCount}>
+                  {isFiltered ? (
+                    <EmptyState
+                      icon={<Boxes />}
+                      title="No brands match these filters"
+                      action={
+                        <ButtonLink href="/brands" variant="secondary" size="sm">
+                          Clear filters
+                        </ButtonLink>
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={<Boxes />}
+                      title="No brands yet"
+                      description="Brands are optional on a product, but they make filtering the catalog much easier."
+                      action={
+                        canManage ? (
+                          <ButtonLink href="/brands/new" variant="primary" size="sm">
+                            <Plus aria-hidden="true" />
+                            Add brand
+                          </ButtonLink>
+                        ) : null
+                      }
+                    />
+                  )}
+                </TableEmptyRow>
               ) : (
                 brands.map((brand) => (
-                  <tr key={brand.id} className="border-b border-line last:border-0">
-                    <Td className="font-medium text-ink">{brand.name}</Td>
-                    <Td className="font-mono text-xs text-ink-muted">{brand.slug}</Td>
-                    <Td align="right" numeric>
+                  <TR key={brand.id}>
+                    <TDPrimary>{brand.name}</TDPrimary>
+
+                    <TD>
+                      <CodeText>{brand.slug}</CodeText>
+                    </TD>
+
+                    <TD align="right" numeric className="font-medium text-fg">
                       {brand.products_count ?? 0}
-                    </Td>
-                    <Td>
-                      <Badge tone={brand.is_active ? "success" : "danger"}>
-                        {brand.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </Td>
+                    </TD>
+
+                    <TD>
+                      <StatusBadge active={brand.is_active} />
+                    </TD>
+
                     {canManage ? (
-                      <Td>
-                        <div className="flex items-center gap-3">
-                          <Link
-                            href={`/brands/${brand.id}/edit`}
-                            className="text-sm font-medium text-brand hover:text-brand-strong"
-                          >
-                            Edit
-                          </Link>
-                          <ArchiveButton
-                            resource="brands"
-                            id={brand.id}
-                            confirmMessage={`Archive "${brand.name}"? Brands used by products cannot be archived — deactivate instead.`}
-                          />
-                        </div>
-                      </Td>
+                      <TD align="right">
+                        <SimpleRowActions
+                          resource="brands"
+                          id={brand.id}
+                          name={brand.name}
+                          editHref={`/brands/${brand.id}/edit`}
+                          canManage={canManage}
+                          inUseCount={brand.products_count ?? 0}
+                        />
+                      </TD>
                     ) : null}
-                  </tr>
+                  </TR>
                 ))
               )}
-            </tbody>
-          </TableShell>
+            </TBody>
+          </Table>
 
-          {meta ? (
+          {meta && brands.length > 0 ? (
             <Pagination
               currentPage={meta.current_page}
               lastPage={meta.last_page}
               total={meta.total}
+              perPage={meta.per_page}
               buildHref={buildHref}
+              label="brands"
             />
           ) : null}
-        </>
+        </TableContainer>
       )}
     </div>
   );
