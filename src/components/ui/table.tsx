@@ -1,79 +1,165 @@
 import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+import { cn } from "@/lib/cn";
 
 /**
- * Minimal table + pagination primitives.
+ * Table primitives.
  *
- * Deliberately hand-rolled rather than pulling in TanStack Table: sorting,
- * grouping and virtualisation are not needed yet, and the existing users table
- * already follows this shape. The dependency can be added later if a real grid
- * requirement appears.
+ * Hand-rolled rather than TanStack Table: there is no sorting, grouping or
+ * virtualisation requirement yet, and these pages render at most 100 rows from
+ * the server. The dependency can arrive when a real grid requirement does.
  */
 
-export function TableShell({ children, minWidth = "56rem" }: { children: React.ReactNode; minWidth?: string }) {
+export function TableContainer({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    // Wide tables scroll inside their own container so the page body never
-    // scrolls sideways.
-    <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-      <table className="w-full text-left text-sm" style={{ minWidth }}>
-        {children}
-      </table>
+    <div className={cn("overflow-hidden rounded-xl border border-border bg-surface shadow-xs", className)}>
+      {/* Wide tables scroll inside their own container, so the page body never
+          scrolls sideways on a laptop. */}
+      <div className="overflow-x-auto scrollbar-slim">{children}</div>
     </div>
   );
 }
 
-export function Th({
+export function Table({
   children,
-  align = "left",
+  minWidth = "60rem",
 }: {
-  children?: React.ReactNode;
-  align?: "left" | "right";
+  children: React.ReactNode;
+  minWidth?: string;
 }) {
   return (
-    <th
-      scope="col"
-      className={`px-4 py-3 font-semibold ${align === "right" ? "text-right" : "text-left"}`}
-    >
+    <table className="w-full border-collapse text-left text-sm" style={{ minWidth }}>
       {children}
-    </th>
+    </table>
   );
 }
 
-export function Thead({ children }: { children: React.ReactNode }) {
+export function THead({ children }: { children: React.ReactNode }) {
   return (
-    <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-subtle">
-      {children}
+    <thead className="border-b border-border bg-surface-muted">
+      <tr>{children}</tr>
     </thead>
   );
 }
 
-export function Td({
+export function TH({
+  children,
+  align = "left",
+  className,
+  srOnly = false,
+}: {
+  children?: React.ReactNode;
+  align?: "left" | "right" | "center";
+  className?: string;
+  /** For an actions column, where a visible header adds noise. */
+  srOnly?: boolean;
+}) {
+  return (
+    <th
+      scope="col"
+      className={cn(
+        "px-4 py-2.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-fg-subtle",
+        align === "right" && "text-right",
+        align === "center" && "text-center",
+        className,
+      )}
+    >
+      {srOnly ? <span className="sr-only">{children}</span> : children}
+    </th>
+  );
+}
+
+export function TBody({ children }: { children: React.ReactNode }) {
+  return <tbody className="divide-y divide-border">{children}</tbody>;
+}
+
+export function TR({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <tr className={cn("transition-colors hover:bg-surface-muted", className)}>{children}</tr>
+  );
+}
+
+export function TD({
   children,
   align = "left",
   numeric = false,
-  className = "",
+  className,
 }: {
   children?: React.ReactNode;
-  align?: "left" | "right";
+  align?: "left" | "right" | "center";
   numeric?: boolean;
   className?: string;
 }) {
   return (
     <td
-      className={
-        `px-4 py-3 ${align === "right" ? "text-right" : "text-left"} ` +
-        // tabular-nums keeps price columns aligned digit-for-digit.
-        `${numeric ? "tabular-nums" : ""} ${className}`
-      }
+      className={cn(
+        "px-4 py-3 align-middle text-[0.8125rem] text-fg-muted",
+        align === "right" && "text-right",
+        align === "center" && "text-center",
+        numeric && "num",
+        className,
+      )}
     >
       {children}
     </td>
   );
 }
 
-export function EmptyRow({ colSpan, children }: { colSpan: number; children: React.ReactNode }) {
+/**
+ * The dominant cell in a row: a strong primary line with quiet secondary text
+ * beneath. Used for product name + model, and user name + email.
+ */
+export function TDPrimary({
+  children,
+  secondary,
+  href,
+}: {
+  children: React.ReactNode;
+  secondary?: React.ReactNode;
+  href?: string;
+}) {
+  const primary = href ? (
+    <Link
+      href={href}
+      className="font-medium text-fg transition-colors hover:text-primary-600 hover:underline"
+    >
+      {children}
+    </Link>
+  ) : (
+    <span className="font-medium text-fg">{children}</span>
+  );
+
+  return (
+    <td className="max-w-[22rem] px-4 py-3 align-middle text-[0.8125rem]">
+      <div className="truncate">{primary}</div>
+      {secondary ? <div className="mt-0.5 truncate text-xs text-fg-subtle">{secondary}</div> : null}
+    </td>
+  );
+}
+
+export function TableEmptyRow({
+  colSpan,
+  children,
+}: {
+  colSpan: number;
+  children: React.ReactNode;
+}) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-4 py-10 text-center text-ink-muted">
+      <td colSpan={colSpan} className="px-4 py-16">
         {children}
       </td>
     </tr>
@@ -81,102 +167,116 @@ export function EmptyRow({ colSpan, children }: { colSpan: number; children: Rea
 }
 
 /**
- * Server-rendered pagination: plain links so it works without JavaScript and
- * keeps the current filters via the caller-supplied query builder.
+ * Monospaced code cell for SKUs, slugs and HSN codes.
+ *
+ * nowrap because a code broken across two lines ("DEMO-ACC-" / "CHG") is
+ * harder to read than a slightly wider column.
+ */
+export function CodeText({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={cn("whitespace-nowrap font-mono text-xs text-fg-muted", className)}>
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Server-rendered pagination: plain links, so it works without JavaScript and
+ * preserves the caller's active filters via `buildHref`.
  */
 export function Pagination({
   currentPage,
   lastPage,
   total,
+  perPage,
   buildHref,
+  label = "records",
 }: {
   currentPage: number;
   lastPage: number | null;
   total: number | null;
+  perPage?: number;
   buildHref: (page: number) => string;
+  label?: string;
 }) {
   const pages = lastPage ?? 1;
+  const count = total ?? 0;
 
-  if (pages <= 1) {
-    return (
-      <p className="text-xs text-ink-subtle">
-        {total ?? 0} {total === 1 ? "record" : "records"}
-      </p>
-    );
-  }
+  const from = perPage ? (currentPage - 1) * perPage + 1 : null;
+  const to = perPage ? Math.min(currentPage * perPage, count) : null;
 
-  const previous = Math.max(1, currentPage - 1);
-  const next = Math.min(pages, currentPage + 1);
+  const summary =
+    from !== null && to !== null && count > 0
+      ? `Showing ${from}–${to} of ${count} ${label}`
+      : `${count} ${count === 1 ? label.replace(/s$/, "") : label}`;
 
   return (
-    <div className="flex items-center justify-between gap-4">
-      <p className="text-xs text-ink-subtle">
-        Page {currentPage} of {pages} · {total ?? 0} records
-      </p>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-muted px-4 py-3">
+      <p className="text-xs text-fg-subtle">{summary}</p>
 
-      <div className="flex items-center gap-2">
-        {currentPage > 1 ? (
-          <Link
-            href={buildHref(previous)}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-1.5 text-sm text-ink hover:bg-canvas"
+      {pages > 1 ? (
+        <nav aria-label="Pagination" className="flex items-center gap-1.5">
+          <PageLink
+            href={buildHref(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1}
+            label="Previous page"
           >
-            Previous
-          </Link>
-        ) : (
-          <span className="rounded-[--radius-control] border border-line px-3 py-1.5 text-sm text-ink-subtle">
-            Previous
-          </span>
-        )}
+            <ChevronLeft aria-hidden="true" />
+            <span className="hidden sm:inline">Previous</span>
+          </PageLink>
 
-        {currentPage < pages ? (
-          <Link
-            href={buildHref(next)}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-1.5 text-sm text-ink hover:bg-canvas"
-          >
-            Next
-          </Link>
-        ) : (
-          <span className="rounded-[--radius-control] border border-line px-3 py-1.5 text-sm text-ink-subtle">
-            Next
+          <span className="px-2 text-xs text-fg-muted num">
+            Page {currentPage} of {pages}
           </span>
-        )}
-      </div>
+
+          <PageLink
+            href={buildHref(Math.min(pages, currentPage + 1))}
+            disabled={currentPage >= pages}
+            label="Next page"
+          >
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight aria-hidden="true" />
+          </PageLink>
+        </nav>
+      ) : null}
     </div>
   );
 }
 
-export function PageHeader({
-  title,
-  description,
-  action,
+function PageLink({
+  href,
+  disabled,
+  label,
+  children,
 }: {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
+  href: string;
+  disabled: boolean;
+  label: string;
+  children: React.ReactNode;
 }) {
-  return (
-    <header className="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-ink-muted">{description}</p> : null}
-      </div>
-      {action}
-    </header>
+  const base = cn(
+    "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium",
+    "[&_svg]:size-3.5",
   );
-}
 
-export function PermissionNotice({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-xl border border-line bg-surface p-5 text-sm text-ink-muted">
-      {children}
-    </p>
-  );
-}
+  if (disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className={cn(base, "cursor-not-allowed border-border bg-surface text-fg-subtle opacity-60")}
+      >
+        {children}
+      </span>
+    );
+  }
 
-export function ErrorNotice({ children }: { children: React.ReactNode }) {
   return (
-    <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft p-4 text-sm text-danger">
+    <Link
+      href={href}
+      aria-label={label}
+      className={cn(base, "border-border-strong bg-surface text-fg shadow-xs hover:bg-surface-hover")}
+    >
       {children}
-    </p>
+    </Link>
   );
 }

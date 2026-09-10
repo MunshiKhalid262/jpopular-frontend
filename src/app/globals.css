@@ -1,46 +1,215 @@
 @import "tailwindcss";
 
-/*
- * Tailwind v4 is CSS-first: design tokens live here, not in a tailwind.config
- * file. Defined before any component library is added so generated components
- * inherit real tokens. See ARCHITECTURE-V1.md section 3.2.
- */
+/* ===========================================================================
+   JPopular design tokens
+
+   Tailwind v4 is CSS-first, so these tokens ARE the design system. Every
+   component colour, radius and shadow must come from here rather than from a
+   literal, which is what keeps the app looking like one product.
+
+   Light mode only for now. This token layer is the seam where dark mode would
+   later be added without editing a single component.
+   =========================================================================== */
 @theme {
-  /* Neutrals carry a slight cool bias rather than pure grey. */
+  /* --- Typography ------------------------------------------------------- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-code), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Neutrals ---------------------------------------------------------
+     A faint cool bias rather than pure grey, so surfaces read as chosen
+     instead of inherited. */
+  --color-canvas: #f6f7f9;
   --color-surface: #ffffff;
-  --color-canvas: #f4f6f7;
-  --color-line: #dde3e6;
-  --color-ink: #161f24;
-  --color-ink-muted: #5b6a72;
-  --color-ink-subtle: #8595a0;
+  --color-surface-muted: #fafbfc;
+  --color-surface-hover: #f3f5f7;
+  --color-surface-inset: #f0f2f5;
 
-  /* Deep teal: reads technical, suits an electric-mobility retailer. */
-  --color-brand: #0b6e63;
-  --color-brand-strong: #08564e;
-  --color-brand-soft: #e4f0ee;
+  --color-border: #e4e7ec;
+  --color-border-strong: #d0d5dd;
 
-  --color-danger: #b3261e;
-  --color-danger-soft: #fdeceb;
-  --color-success: #1a7f4b;
-  --color-success-soft: #e7f5ed;
-  --color-warning: #a66300;
+  --color-fg: #101828;
+  --color-fg-muted: #475467;
+  --color-fg-subtle: #79828f;
+  --color-fg-inverted: #ffffff;
 
-  --radius-control: 0.5rem;
+  /* --- Primary: deep teal ----------------------------------------------
+     Continues the existing JP brand mark. Reads technical rather than
+     playful, which suits an electric-mobility retailer. */
+  --color-primary-50: #eff7f6;
+  --color-primary-100: #d7ebe8;
+  --color-primary-200: #aed7d1;
+  --color-primary-300: #7cbcb3;
+  --color-primary-400: #4a9d92;
+  --color-primary-500: #158376;
+  --color-primary-600: #0b6e63;
+  --color-primary-700: #085a51;
+  --color-primary-800: #06463f;
+  --color-primary-900: #04332e;
+
+  /* --- Semantic: status only, never decoration -------------------------- */
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-600: #039855;
+  --color-success-700: #027a48;
+
+  --color-warning-50: #fffaeb;
+  --color-warning-100: #fef0c7;
+  --color-warning-600: #dc6803;
+  --color-warning-700: #b54708;
+
+  --color-danger-50: #fef3f2;
+  --color-danger-100: #fee4e2;
+  --color-danger-600: #d92d20;
+  --color-danger-700: #b42318;
+
+  --color-info-50: #eff8ff;
+  --color-info-100: #d1e9ff;
+  --color-info-600: #1570ef;
+  --color-info-700: #175cd3;
+
+  /* --- Focus ring -------------------------------------------------------- */
+  --color-ring: #0b6e63;
+
+  /* --- Radii ------------------------------------------------------------- */
+  --radius-sm: 0.3125rem;
+  --radius-md: 0.4375rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+
+  /* --- Shadows ----------------------------------------------------------
+     Deliberately restrained: an admin tool should read as flat and precise,
+     not floating. */
+  --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.08), 0 1px 2px -1px rgb(16 24 40 / 0.04);
+  --shadow-md: 0 4px 8px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
+  --shadow-lg: 0 12px 16px -4px rgb(16 24 40 / 0.08), 0 4px 6px -2px rgb(16 24 40 / 0.03);
+  --shadow-popover: 0 8px 24px -6px rgb(16 24 40 / 0.14), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+
+  /* --- Motion ------------------------------------------------------------ */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-html,
-body {
-  height: 100%;
+/* ===========================================================================
+   Base layer
+   =========================================================================== */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    /* Inter's disambiguation forms and contextual alternates. This is most of
+       what makes small UI text look deliberate rather than default. */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Digits must align in every column carrying money, stock or a percentage. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+    letter-spacing: -0.011em;
+  }
+
+  /* One consistent keyboard focus treatment for the entire app. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  /* Mouse users get no ring; keyboard users always do. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-100);
+    color: var(--color-primary-900);
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-primary-600);
+  }
+
+  ::placeholder {
+    color: var(--color-fg-subtle);
+  }
 }
 
-body {
-  background-color: var(--color-canvas);
-  color: var(--color-ink);
-  -webkit-font-smoothing: antialiased;
+@layer utilities {
+  /* Thin, unobtrusive scrollbars inside panels, menus and the sidebar. */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Applied to a numeric cell that must not wrap mid-figure. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
 }
 
-/* Always show a visible focus ring for keyboard users. */
-:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
+/* Radix animations, kept short and few. */
+@keyframes jp-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes jp-content-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes jp-menu-in {
+  from { opacity: 0; transform: translateY(-2px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

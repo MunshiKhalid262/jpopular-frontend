@@ -1,22 +1,27 @@
+import { PackageSearch, Plus } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { Badge } from "@/components/ui/controls";
+import { ButtonLink } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/badge";
+import { EmptyState, ErrorNotice, PermissionNotice } from "@/components/ui/feedback";
+import { PageHeader } from "@/components/ui/page-header";
 import {
-  EmptyRow,
-  ErrorNotice,
-  PageHeader,
+  CodeText,
   Pagination,
-  PermissionNotice,
-  TableShell,
-  Td,
-  Th,
-  Thead,
+  TBody,
+  TD,
+  TDPrimary,
+  TH,
+  THead,
+  TR,
+  Table,
+  TableContainer,
+  TableEmptyRow,
 } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
-import { ArchiveButton } from "@/features/catalog/components/ArchiveButton";
-import { ProductStatusToggle } from "@/features/catalog/components/ProductStatusToggle";
+import { ProductFilters } from "@/features/catalog/components/ProductFilters";
+import { ProductRowActions } from "@/features/catalog/components/ProductRowActions";
 import type {
   Brand,
   Category,
@@ -27,7 +32,9 @@ import { ApiError } from "@/lib/api-error";
 import { formatInr, formatPercent, formatQuantity } from "@/lib/money";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Products · JPopular" };
+export const metadata: Metadata = { title: "Products" };
+
+const PER_PAGE = 25;
 
 type Filters = {
   page?: string;
@@ -57,7 +64,7 @@ export default async function ProductsPage({
   const canSeeCost = hasPermission(user.permissions, PERMISSIONS.productsViewPurchasePrice);
   const hasActions = canUpdate || canDelete;
 
-  const query = new URLSearchParams({ per_page: "25" });
+  const query = new URLSearchParams({ per_page: String(PER_PAGE) });
   for (const key of ["page", "search", "category_id", "brand_id", "is_active"] as const) {
     const value = params[key];
     if (value) query.set(key, value);
@@ -70,7 +77,6 @@ export default async function ProductsPage({
   let loadError: string | null = null;
 
   try {
-    // Filter options load alongside the list; both are cheap at this scale.
     const [productResponse, categoryResponse, brandResponse] = await Promise.all([
       apiFetch<Product[]>(`/products?${query.toString()}`),
       apiFetch<Category[]>("/categories?per_page=100&is_active=1"),
@@ -96,206 +102,168 @@ export default async function ProductsPage({
     return `/products?${next.toString()}`;
   };
 
-  const columnCount = 8 + (canSeeCost ? 1 : 0) + (hasActions ? 1 : 0);
+  const isFiltered = Boolean(
+    params.search || params.category_id || params.brand_id || params.is_active,
+  );
+
+  // Product, SKU, Category, Brand, Selling, [Purchase], GST, Stock, Status, [Actions]
+  const columnCount = 9 + (canSeeCost ? 1 : 0) + (hasActions ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
         title="Products"
-        description="Scooters, batteries and accessories you sell."
+        description="Scooters, batteries and accessories you sell. Stock is managed in Inventory."
         action={
           canCreate ? (
-            <Link
-              href="/products/new"
-              className="inline-flex items-center rounded-[--radius-control] bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-strong"
-            >
+            <ButtonLink href="/products/new" variant="primary">
+              <Plus aria-hidden="true" />
               Add product
-            </Link>
+            </ButtonLink>
           ) : null
         }
       />
 
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="search" className="text-xs font-medium text-ink-muted">
-            Search
-          </label>
-          <input
-            id="search"
-            name="search"
-            defaultValue={params.search ?? ""}
-            placeholder="Name, SKU or model"
-            className="w-60 rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="category_id" className="text-xs font-medium text-ink-muted">
-            Category
-          </label>
-          <select
-            id="category_id"
-            name="category_id"
-            defaultValue={params.category_id ?? ""}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
-          >
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="brand_id" className="text-xs font-medium text-ink-muted">
-            Brand
-          </label>
-          <select
-            id="brand_id"
-            name="brand_id"
-            defaultValue={params.brand_id ?? ""}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
-          >
-            <option value="">All brands</option>
-            {brands.map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="is_active" className="text-xs font-medium text-ink-muted">
-            Status
-          </label>
-          <select
-            id="is_active"
-            name="is_active"
-            defaultValue={params.is_active ?? ""}
-            className="rounded-[--radius-control] border border-line bg-surface px-3 py-2 text-sm"
-          >
-            <option value="">All</option>
-            <option value="1">Active</option>
-            <option value="0">Inactive</option>
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          className="rounded-[--radius-control] border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-canvas"
-        >
-          Apply
-        </button>
-
-        <Link href="/products" className="px-1 py-2 text-sm text-ink-muted hover:text-ink">
-          Reset
-        </Link>
-      </form>
+      <ProductFilters
+        categories={categories}
+        brands={brands}
+        values={{
+          search: params.search,
+          category_id: params.category_id,
+          brand_id: params.brand_id,
+          is_active: params.is_active,
+        }}
+      />
 
       {loadError ? (
         <ErrorNotice>{loadError}</ErrorNotice>
       ) : (
-        <>
-          <TableShell minWidth={canSeeCost ? "72rem" : "64rem"}>
-            <Thead>
-              <tr>
-                <Th>Product</Th>
-                <Th>SKU</Th>
-                <Th>Category</Th>
-                <Th>Brand</Th>
-                <Th align="right">Selling</Th>
-                {canSeeCost ? <Th align="right">Purchase</Th> : null}
-                <Th align="right">GST</Th>
-                <Th align="right">Stock</Th>
-                <Th>Status</Th>
-                {hasActions ? <Th>Actions</Th> : null}
-              </tr>
-            </Thead>
-            <tbody>
+        <TableContainer>
+          {/* Sized to fit a 1440px viewport with the sidebar: a wider floor
+              pushed the actions column past the right edge. */}
+          <Table minWidth={canSeeCost ? "66rem" : "58rem"}>
+            <THead>
+              <TH>Product</TH>
+              <TH>SKU</TH>
+              <TH>Category</TH>
+              <TH>Brand</TH>
+              {/* Short labels keep the header a single line; the currency is
+                  obvious from the values. */}
+              <TH align="right">Selling</TH>
+              {canSeeCost ? <TH align="right">Purchase</TH> : null}
+              <TH align="right">GST</TH>
+              <TH align="right">Stock</TH>
+              <TH>Status</TH>
+              {hasActions ? (
+                <TH align="right" srOnly>
+                  Actions
+                </TH>
+              ) : null}
+            </THead>
+
+            <TBody>
               {products.length === 0 ? (
-                <EmptyRow colSpan={columnCount}>No products found.</EmptyRow>
+                <TableEmptyRow colSpan={columnCount}>
+                  {isFiltered ? (
+                    <EmptyState
+                      icon={<PackageSearch />}
+                      title="No products match these filters"
+                      description="Try a different search term, or clear the filters to see the whole catalog."
+                      action={
+                        <ButtonLink href="/products" variant="secondary" size="sm">
+                          Clear filters
+                        </ButtonLink>
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={<PackageSearch />}
+                      title="No products yet"
+                      description="Add your first scooter, battery or accessory to start building the catalog."
+                      action={
+                        canCreate ? (
+                          <ButtonLink href="/products/new" variant="primary" size="sm">
+                            <Plus aria-hidden="true" />
+                            Add product
+                          </ButtonLink>
+                        ) : null
+                      }
+                    />
+                  )}
+                </TableEmptyRow>
               ) : (
                 products.map((product) => (
-                  <tr key={product.id} className="border-b border-line last:border-0">
-                    <Td>
-                      <Link
-                        href={`/products/${product.id}`}
-                        className="font-medium text-ink hover:text-brand"
-                      >
-                        {product.name}
-                      </Link>
-                      {product.model ? (
-                        <span className="block text-xs text-ink-subtle">{product.model}</span>
-                      ) : null}
-                    </Td>
-                    <Td className="font-mono text-xs text-ink-muted">{product.sku}</Td>
-                    <Td className="text-ink-muted">{product.category?.name ?? "—"}</Td>
-                    <Td className="text-ink-muted">{product.brand?.name ?? "—"}</Td>
-                    <Td align="right" numeric>
+                  <TR key={product.id}>
+                    <TDPrimary href={`/products/${product.id}`} secondary={product.model}>
+                      {product.name}
+                    </TDPrimary>
+
+                    <TD>
+                      <CodeText>{product.sku}</CodeText>
+                    </TD>
+
+                    {/* Truncate rather than wrap: a two-line category name
+                        breaks the row rhythm across the whole table. */}
+                    <TD className="max-w-[10rem] truncate whitespace-nowrap">
+                      {product.category?.name ?? "—"}
+                    </TD>
+                    <TD className="max-w-[10rem] truncate whitespace-nowrap">
+                      {product.brand?.name ?? "—"}
+                    </TD>
+
+                    <TD align="right" numeric className="font-medium text-fg">
                       {formatInr(product.selling_price)}
-                    </Td>
+                    </TD>
+
                     {canSeeCost ? (
-                      <Td align="right" numeric className="text-ink-muted">
+                      <TD align="right" numeric>
                         {formatInr(product.purchase_price)}
-                      </Td>
+                      </TD>
                     ) : null}
-                    <Td align="right" numeric className="text-ink-muted">
+
+                    <TD align="right" numeric>
                       {formatPercent(product.gst_rate)}
-                    </Td>
-                    <Td align="right" numeric>
-                      {formatQuantity(product.current_stock)}
-                      <span className="ml-1 text-xs text-ink-subtle">{product.unit}</span>
-                    </Td>
-                    <Td>
-                      <Badge tone={product.is_active ? "success" : "danger"}>
-                        {product.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </Td>
+                    </TD>
+
+                    <TD align="right" numeric>
+                      <span className="font-medium text-fg">
+                        {formatQuantity(product.current_stock)}
+                      </span>
+                      <span className="ml-1 text-xs text-fg-subtle">{product.unit}</span>
+                    </TD>
+
+                    <TD>
+                      <StatusBadge active={product.is_active} />
+                    </TD>
+
                     {hasActions ? (
-                      <Td>
-                        <div className="flex items-center gap-3">
-                          {canUpdate ? (
-                            <>
-                              <Link
-                                href={`/products/${product.id}/edit`}
-                                className="text-sm font-medium text-brand hover:text-brand-strong"
-                              >
-                                Edit
-                              </Link>
-                              <ProductStatusToggle
-                                productId={product.id}
-                                isActive={product.is_active}
-                              />
-                            </>
-                          ) : null}
-                          {canDelete ? (
-                            <ArchiveButton
-                              resource="products"
-                              id={product.id}
-                              confirmMessage={`Archive "${product.name}"? It stays on historical invoices and can be restored.`}
-                            />
-                          ) : null}
-                        </div>
-                      </Td>
+                      <TD align="right">
+                        <ProductRowActions
+                          productId={product.id}
+                          productName={product.name}
+                          isActive={product.is_active}
+                          canUpdate={canUpdate}
+                          canDelete={canDelete}
+                        />
+                      </TD>
                     ) : null}
-                  </tr>
+                  </TR>
                 ))
               )}
-            </tbody>
-          </TableShell>
+            </TBody>
+          </Table>
 
-          {meta ? (
+          {meta && products.length > 0 ? (
             <Pagination
               currentPage={meta.current_page}
               lastPage={meta.last_page}
               total={meta.total}
+              perPage={meta.per_page}
               buildHref={buildHref}
+              label="products"
             />
           ) : null}
-        </>
+        </TableContainer>
       )}
     </div>
   );

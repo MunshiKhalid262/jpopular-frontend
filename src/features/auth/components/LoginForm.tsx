@@ -1,49 +1,37 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { useForm } from "react-hook-form";
 
-import { Field } from "@/components/ui/Field";
-import { Button, FormAlert, TextInput } from "@/components/ui/controls";
-import { loginSchema } from "@/features/auth/schemas";
-
-type FieldErrors = Partial<Record<"email" | "password", string>>;
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/feedback";
+import { Input, PasswordInput } from "@/components/ui/input";
+import { loginSchema, type LoginInput } from "@/features/auth/schemas";
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [isRedirecting, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
-  const busy = isPending || isRedirecting;
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const busy = isSubmitting || isRedirecting || redirecting;
+
+  async function onSubmit(values: LoginInput) {
     setFormError(null);
-    setFieldErrors({});
-
-    // Client validation is UX; the server revalidates.
-    const parsed = loginSchema.safeParse({ email, password });
-
-    if (!parsed.success) {
-      const next: FieldErrors = {};
-
-      for (const issue of parsed.error.issues) {
-        const key = issue.path[0];
-
-        if (key === "email" || key === "password") {
-          next[key] ??= issue.message;
-        }
-      }
-
-      setFieldErrors(next);
-
-      return;
-    }
 
     let response: Response;
 
@@ -51,7 +39,7 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(values),
       });
     } catch {
       setFormError("Could not reach the server. Check your connection and try again.");
@@ -59,38 +47,39 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       return;
     }
 
-    const body: unknown = await response.json().catch(() => null);
+    const body = (await response.json().catch(() => null)) as
+      | { message?: string; errors?: Record<string, string[]> }
+      | null;
 
     if (!response.ok) {
-      const envelope = (body ?? {}) as {
-        message?: string;
-        errors?: Record<string, string[]>;
-      };
+      if (response.status === 422 && body?.errors) {
+        let mapped = false;
 
-      if (response.status === 422 && envelope.errors) {
-        const next: FieldErrors = {};
+        for (const field of ["email", "password"] as const) {
+          const message = body.errors[field]?.[0];
 
-        if (envelope.errors.email?.[0]) next.email = envelope.errors.email[0];
-        if (envelope.errors.password?.[0]) next.password = envelope.errors.password[0];
+          if (message) {
+            setError(field, { message });
+            mapped = true;
+          }
+        }
 
-        // Laravel reports bad credentials, an inactive account, and a
+        // Laravel reports bad credentials, an inactive account and a
         // soft-deleted account identically under `email` -- by design, so the
-        // endpoint cannot be used to enumerate accounts.
-        if (Object.keys(next).length > 0) {
-          setFieldErrors(next);
-        } else {
-          setFormError(envelope.message ?? "Please check your details and try again.");
+        // endpoint cannot be used to discover which accounts exist.
+        if (!mapped) {
+          setFormError(body.message ?? "Please check your details and try again.");
         }
 
         return;
       }
 
-      setFormError(envelope.message ?? "Unable to sign in. Please try again.");
+      setFormError(body?.message ?? "Unable to sign in. Please try again.");
 
       return;
     }
 
-    setIsRedirecting(true);
+    setRedirecting(true);
 
     startTransition(() => {
       router.replace(nextPath);
@@ -99,43 +88,40 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
       {formError ? <FormAlert message={formError} /> : null}
 
-      <Field label="Email" error={fieldErrors.email}>
+      <Field label="Email address" error={errors.email?.message} required>
         {(props) => (
-          <TextInput
+          <Input
             {...props}
+            {...register("email")}
             type="email"
-            name="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
-            autoFocus
-            required
-            disabled={busy}
             placeholder="you@jpopular.in"
-          />
-        )}
-      </Field>
-
-      <Field label="Password" error={fieldErrors.password}>
-        {(props) => (
-          <TextInput
-            {...props}
-            type="password"
-            name="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            required
+            autoFocus
             disabled={busy}
+            className="h-10"
           />
         )}
       </Field>
 
-      <Button type="submit" disabled={busy} className="mt-1 w-full">
+      <Field label="Password" error={errors.password?.message} required>
+        {(props) => (
+          <PasswordInput
+            {...props}
+            {...register("password")}
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            disabled={busy}
+            className="h-10"
+          />
+        )}
+      </Field>
+
+      <Button type="submit" variant="primary" size="lg" loading={busy} className="mt-1 w-full">
         {busy ? "Signing in…" : "Sign in"}
+        {busy ? null : <ArrowRight aria-hidden="true" />}
       </Button>
     </form>
   );

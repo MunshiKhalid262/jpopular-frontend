@@ -1,247 +1,281 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 
-import { Field } from "@/components/ui/Field";
-import { Button, FormAlert, Select, TextInput } from "@/components/ui/controls";
-import { createUserSchema, updateUserSchema } from "@/features/auth/schemas";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field, FieldSpan, FormActions, FormSection } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/feedback";
+import { Input, PasswordInput, Select } from "@/components/ui/input";
+import { notify } from "@/components/ui/toast";
+import { userFormSchema, type UserFormInput } from "@/features/auth/schemas";
 import type { ManagedUser } from "@/features/auth/types";
+import { postJson, putJson } from "@/features/catalog/client";
 
 type Mode = "create" | "edit";
 
-type FieldErrors = Record<string, string>;
-
+/**
+ * Create/edit form for a staff account.
+ *
+ * On edit the role goes through the dedicated /users/{id}/roles endpoint rather
+ * than the general update, because that endpoint carries the
+ * last-active-admin guard. Both requests are reported honestly: if the details
+ * save but the role change is refused, the message says exactly that rather
+ * than implying nothing happened.
+ */
 export function UserForm({ mode, user }: { mode: Mode; user?: ManagedUser }) {
   const router = useRouter();
-
-  const [name, setName] = useState(user?.name ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [password, setPassword] = useState("");
-  const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [role, setRole] = useState<"admin" | "manager">(
-    (user?.roles[0] as "admin" | "manager" | undefined) ?? "manager",
-  );
-
-  const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [isPending, setIsPending] = useState(false);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrors({});
+  const isCreate = mode === "create";
+
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<UserFormInput>({
+    resolver: zodResolver(userFormSchema(mode)),
+    defaultValues: {
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      phone: user?.phone ?? "",
+      role: (user?.roles[0] as "admin" | "manager" | undefined) ?? "manager",
+      password: "",
+      password_confirmation: "",
+    },
+  });
+
+  function applyServerErrors(serverErrors: Record<string, string[]>) {
+    const known: (keyof UserFormInput)[] = [
+      "name",
+      "email",
+      "phone",
+      "role",
+      "password",
+      "password_confirmation",
+    ];
+
+    for (const [field, messages] of Object.entries(serverErrors)) {
+      const message = messages[0];
+
+      if (!message) continue;
+
+      // Laravel reports the role as `roles.0`; the form field is `role`.
+      const key = field === "roles.0" || field === "roles" ? "role" : field;
+
+      if (known.includes(key as keyof UserFormInput)) {
+        setError(key as keyof UserFormInput, { message });
+      }
+    }
+  }
+
+  async function onSubmit(values: UserFormInput) {
     setFormError(null);
 
-    const parsed =
-      mode === "create"
-        ? createUserSchema.safeParse({
-            name,
-            email,
-            phone,
-            password,
-            password_confirmation: passwordConfirmation,
-            role,
-          })
-        : updateUserSchema.safeParse({ name, email, phone });
+    if (isCreate) {
+      const result = await postJson("/users", {
+        name: values.name,
+        email: values.email,
+        phone: values.phone === "" ? null : values.phone,
+        password: values.password,
+        password_confirmation: values.password_confirmation,
+        roles: [values.role],
+      });
 
-    if (!parsed.success) {
-      const next: FieldErrors = {};
-
-      for (const issue of parsed.error.issues) {
-        const key = issue.path.map(String).join(".");
-        next[key] ??= issue.message;
-      }
-
-      setErrors(next);
-
-      return;
-    }
-
-    setIsPending(true);
-
-    try {
-      const created = mode === "create";
-
-      const response = await fetch(
-        created ? "/api/v1/users" : `/api/v1/users/${user?.id}`,
-        {
-          method: created ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            created
-              ? {
-                  name,
-                  email,
-                  phone: phone === "" ? null : phone,
-                  password,
-                  password_confirmation: passwordConfirmation,
-                  roles: [role],
-                }
-              : { name, email, phone: phone === "" ? null : phone },
-          ),
-        },
-      );
-
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as
-          | { message?: string; errors?: Record<string, string[]> }
-          | null;
-
-        if (response.status === 422 && body?.errors) {
-          const next: FieldErrors = {};
-
-          for (const [field, messages] of Object.entries(body.errors)) {
-            if (messages[0]) {
-              // Laravel reports `roles.0`; the form field is `role`.
-              next[field === "roles.0" || field === "roles" ? "role" : field] = messages[0];
-            }
-          }
-
-          setErrors(next);
-        }
-
-        setFormError(body?.message ?? "Could not save this user.");
+      if (!result.ok) {
+        applyServerErrors(result.failure.errors);
+        setFormError(result.failure.message);
 
         return;
       }
 
-      // Role changes on an existing user go through a dedicated endpoint,
-      // because they carry the last-active-admin guard.
-      if (mode === "edit" && user && role !== user.roles[0]) {
-        const roleResponse = await fetch(`/api/v1/users/${user.id}/roles`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roles: [role] }),
-        });
-
-        if (!roleResponse.ok) {
-          const body = (await roleResponse.json().catch(() => null)) as
-            | { message?: string }
-            | null;
-
-          setFormError(body?.message ?? "The user was saved, but the role could not be changed.");
-
-          return;
-        }
-      }
+      notify.success("User created", {
+        description: `${values.name} can sign in as ${values.role}.`,
+      });
 
       router.push("/users");
       router.refresh();
-    } catch {
-      setFormError("Could not reach the server. Please try again.");
-    } finally {
-      setIsPending(false);
+
+      return;
     }
+
+    if (!user) return;
+
+    const detailsResult = await putJson(`/users/${user.id}`, {
+      name: values.name,
+      email: values.email,
+      phone: values.phone === "" ? null : values.phone,
+    });
+
+    if (!detailsResult.ok) {
+      applyServerErrors(detailsResult.failure.errors);
+      setFormError(detailsResult.failure.message);
+
+      return;
+    }
+
+    if (values.role !== user.roles[0]) {
+      const roleResult = await putJson(`/users/${user.id}/roles`, { roles: [values.role] });
+
+      if (!roleResult.ok) {
+        // Be precise: the details DID save; only the role change failed.
+        setFormError(
+          `Details were saved, but the role could not be changed: ${roleResult.failure.message}`,
+        );
+        notify.warning("Role not changed", { description: roleResult.failure.message });
+        router.refresh();
+
+        return;
+      }
+    }
+
+    notify.success("User updated", { description: values.name });
+
+    router.push("/users");
+    router.refresh();
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-lg flex-col gap-5" noValidate>
-      {formError ? <FormAlert message={formError} /> : null}
+    <Card className="overflow-hidden">
+      <form onSubmit={handleSubmit(onSubmit)} className="px-6 pt-6" noValidate>
+        {formError ? (
+          <div className="mb-5">
+            <FormAlert message={formError} />
+          </div>
+        ) : null}
 
-      <Field label="Full name" error={errors.name}>
-        {(props) => (
-          <TextInput
-            {...props}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="name"
-            required
-            disabled={isPending}
-          />
-        )}
-      </Field>
-
-      <Field label="Email" error={errors.email}>
-        {(props) => (
-          <TextInput
-            {...props}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            required
-            disabled={isPending}
-          />
-        )}
-      </Field>
-
-      <Field label="Phone" error={errors.phone} hint="Optional.">
-        {(props) => (
-          <TextInput
-            {...props}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            autoComplete="tel"
-            disabled={isPending}
-          />
-        )}
-      </Field>
-
-      <Field label="Role" error={errors.role}>
-        {(props) => (
-          <Select
-            {...props}
-            value={role}
-            onChange={(event) => setRole(event.target.value as "admin" | "manager")}
-            disabled={isPending}
-          >
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-          </Select>
-        )}
-      </Field>
-
-      {mode === "create" ? (
-        <>
-          <Field
-            label="Password"
-            error={errors.password}
-            hint="At least 12 characters, including a letter and a number."
-          >
-            {(props) => (
-              <TextInput
-                {...props}
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={isPending}
-              />
-            )}
-          </Field>
-
-          <Field label="Confirm password" error={errors.password_confirmation}>
-            {(props) => (
-              <TextInput
-                {...props}
-                type="password"
-                value={passwordConfirmation}
-                onChange={(event) => setPasswordConfirmation(event.target.value)}
-                autoComplete="new-password"
-                required
-                disabled={isPending}
-              />
-            )}
-          </Field>
-        </>
-      ) : null}
-
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving…" : mode === "create" ? "Create user" : "Save changes"}
-        </Button>
-
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => router.push("/users")}
-          disabled={isPending}
+        <FormSection
+          title="Account details"
+          description="How this person is identified and contacted."
         >
-          Cancel
-        </Button>
-      </div>
-    </form>
+          <Field label="Full name" error={errors.name?.message} required>
+            {(props) => (
+              <Input
+                {...props}
+                {...register("name")}
+                autoComplete="name"
+                placeholder="e.g. Priya Sharma"
+                disabled={isSubmitting}
+                autoFocus
+              />
+            )}
+          </Field>
+
+          <Field label="Email address" error={errors.email?.message} required>
+            {(props) => (
+              <Input
+                {...props}
+                {...register("email")}
+                type="email"
+                autoComplete="email"
+                placeholder="name@jpopular.in"
+                disabled={isSubmitting}
+              />
+            )}
+          </Field>
+
+          <Field label="Phone" error={errors.phone?.message} hint="Optional.">
+            {(props) => (
+              <Input
+                {...props}
+                {...register("phone")}
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="e.g. 9876543210"
+                disabled={isSubmitting}
+              />
+            )}
+          </Field>
+        </FormSection>
+
+        <FormSection
+          title="Role"
+          description="Roles are collections of permissions. Managers cannot reach user administration or settings."
+        >
+          <Field label="Role" error={errors.role?.message} required>
+            {(props) => (
+              <Select {...props} {...register("role")} disabled={isSubmitting}>
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+              </Select>
+            )}
+          </Field>
+
+          <FieldSpan>
+            <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-muted px-3.5 py-3">
+              <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
+              <p className="text-xs leading-relaxed text-fg-muted">
+                The last active administrator cannot be demoted or deactivated.
+                Grant Admin to another active user first.
+              </p>
+            </div>
+          </FieldSpan>
+        </FormSection>
+
+        {isCreate ? (
+          <FormSection
+            title="Password"
+            description="The user signs in with this immediately and can change it later."
+          >
+            <Field
+              label="Password"
+              error={errors.password?.message}
+              hint="At least 12 characters, with a letter and a number."
+              required
+            >
+              {(props) => (
+                <PasswordInput
+                  {...props}
+                  {...register("password")}
+                  autoComplete="new-password"
+                  disabled={isSubmitting}
+                />
+              )}
+            </Field>
+
+            <Field
+              label="Confirm password"
+              error={errors.password_confirmation?.message}
+              required
+            >
+              {(props) => (
+                <PasswordInput
+                  {...props}
+                  {...register("password_confirmation")}
+                  autoComplete="new-password"
+                  disabled={isSubmitting}
+                />
+              )}
+            </Field>
+          </FormSection>
+        ) : (
+          <FormSection
+            title="Password"
+            description="Passwords are never shown and can only be replaced."
+          >
+            <FieldSpan>
+              <p className="text-xs leading-relaxed text-fg-muted">
+                Ask the user to sign in and change their own password. Changing a
+                password ends that user&apos;s other sessions.
+              </p>
+            </FieldSpan>
+          </FormSection>
+        )}
+
+        <FormActions>
+          <Button variant="secondary" onClick={() => router.push("/users")} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
+            {isCreate ? "Create user" : "Save changes"}
+          </Button>
+        </FormActions>
+      </form>
+    </Card>
   );
 }

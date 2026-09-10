@@ -1,155 +1,258 @@
+import { Plus, Search, UserRoundPlus, Users as UsersIcon, X } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { UserStatusToggle } from "@/features/users/components/UserStatusToggle";
+import { RoleBadge, StatusBadge } from "@/components/ui/badge";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { EmptyState, ErrorNotice, PermissionNotice } from "@/components/ui/feedback";
+import { SearchInput, Select } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import {
+  Pagination,
+  TBody,
+  TD,
+  TDPrimary,
+  TH,
+  THead,
+  TR,
+  Table,
+  TableContainer,
+  TableEmptyRow,
+} from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
-import type { ManagedUser } from "@/features/auth/types";
-import { Badge } from "@/components/ui/controls";
+import type { ManagedUser, Pagination as PaginationMeta } from "@/features/auth/types";
+import { UserRowActions } from "@/features/users/components/UserRowActions";
 import { ApiError } from "@/lib/api-error";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = {
-  title: "Users · JPopular",
-};
+export const metadata: Metadata = { title: "Users" };
 
-export default async function UsersPage() {
+const PER_PAGE = 25;
+
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; search?: string; is_active?: string; role?: string }>;
+}) {
+  const params = await searchParams;
   const currentUser = await getCurrentUser();
 
-  if (!currentUser) {
-    return null;
-  }
+  if (!currentUser) return null;
 
-  // Defence in depth: the server would 403 anyway, but showing a clear message
-  // beats rendering an empty table.
   if (!hasPermission(currentUser.permissions, PERMISSIONS.usersView)) {
-    return (
-      <p className="rounded-xl border border-line bg-surface p-5 text-sm text-ink-muted">
-        You do not have permission to view users.
-      </p>
-    );
-  }
-
-  let users: ManagedUser[] = [];
-  let loadError: string | null = null;
-
-  try {
-    const response = await apiFetch<ManagedUser[]>("/users?per_page=100");
-    users = response.data;
-  } catch (error) {
-    loadError =
-      error instanceof ApiError ? error.message : "Could not load users. Please try again.";
+    return <PermissionNotice>You do not have permission to view users.</PermissionNotice>;
   }
 
   const canManage = hasPermission(currentUser.permissions, PERMISSIONS.usersManage);
 
+  const query = new URLSearchParams({ per_page: String(PER_PAGE) });
+  for (const key of ["page", "search", "is_active", "role"] as const) {
+    const value = params[key];
+    if (value) query.set(key, value);
+  }
+
+  let users: ManagedUser[] = [];
+  let meta: PaginationMeta | null = null;
+  let loadError: string | null = null;
+
+  try {
+    const response = await apiFetch<ManagedUser[]>(`/users?${query.toString()}`);
+    users = response.data;
+    meta = (response.meta?.pagination as PaginationMeta | undefined) ?? null;
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : "Could not load users.";
+  }
+
+  const buildHref = (page: number) => {
+    const next = new URLSearchParams();
+    for (const key of ["search", "is_active", "role"] as const) {
+      const value = params[key];
+      if (value) next.set(key, value);
+    }
+    next.set("page", String(page));
+
+    return `/users?${next.toString()}`;
+  };
+
+  const isFiltered = Boolean(params.search || params.is_active || params.role);
+  const columnCount = 5 + (canManage ? 1 : 0);
+
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Users</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Administrators and managers who can sign in to JPopular.
-          </p>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Users"
+        description="Administrators and managers who can sign in. Roles decide what each person can reach."
+        action={
+          canManage ? (
+            <ButtonLink href="/users/new" variant="primary">
+              <Plus aria-hidden="true" />
+              Add user
+            </ButtonLink>
+          ) : null
+        }
+      />
+
+      <form method="get" action="/users" className="flex flex-wrap items-center gap-2.5">
+        <div className="min-w-[15rem] flex-1 sm:max-w-xs">
+          <label htmlFor="user-search" className="sr-only">
+            Search users by name or email
+          </label>
+          <SearchInput
+            id="user-search"
+            name="search"
+            defaultValue={params.search ?? ""}
+            placeholder="Search name or email…"
+            icon={<Search />}
+          />
         </div>
 
-        {canManage ? (
-          <Link
-            href="/users/new"
-            className="inline-flex items-center rounded-[--radius-control] bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-strong"
-          >
-            Add user
-          </Link>
+        <div className="w-full sm:w-36">
+          <label htmlFor="user-role" className="sr-only">
+            Filter by role
+          </label>
+          <Select id="user-role" name="role" defaultValue={params.role ?? ""}>
+            <option value="">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+          </Select>
+        </div>
+
+        <div className="w-full sm:w-32">
+          <label htmlFor="user-status" className="sr-only">
+            Filter by status
+          </label>
+          <Select id="user-status" name="is_active" defaultValue={params.is_active ?? ""}>
+            <option value="">Any status</option>
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
+          </Select>
+        </div>
+
+        <Button type="submit" variant="secondary">
+          Apply
+        </Button>
+
+        {isFiltered ? (
+          <ButtonLink href="/users" variant="ghost">
+            <X aria-hidden="true" />
+            Reset
+          </ButtonLink>
         ) : null}
-      </header>
+      </form>
 
       {loadError ? (
-        <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft p-4 text-sm text-danger">
-          {loadError}
-        </p>
+        <ErrorNotice>{loadError}</ErrorNotice>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[46rem] text-left text-sm">
-            <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-subtle">
-              <tr>
-                <th scope="col" className="px-4 py-3 font-semibold">Name</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Email</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Role</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Status</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Last sign-in</th>
-                {canManage ? <th scope="col" className="px-4 py-3 font-semibold">Actions</th> : null}
-              </tr>
-            </thead>
+        <TableContainer>
+          <Table minWidth="52rem">
+            <THead>
+              <TH>Name</TH>
+              <TH>Email</TH>
+              <TH>Role</TH>
+              <TH>Status</TH>
+              <TH>Last sign-in</TH>
+              {canManage ? (
+                <TH align="right" srOnly>
+                  Actions
+                </TH>
+              ) : null}
+            </THead>
 
-            <tbody>
+            <TBody>
               {users.length === 0 ? (
-                <tr>
-                  <td colSpan={canManage ? 6 : 5} className="px-4 py-8 text-center text-ink-muted">
-                    No users yet.
-                  </td>
-                </tr>
+                <TableEmptyRow colSpan={columnCount}>
+                  {isFiltered ? (
+                    <EmptyState
+                      icon={<UsersIcon />}
+                      title="No users match these filters"
+                      action={
+                        <ButtonLink href="/users" variant="secondary" size="sm">
+                          Clear filters
+                        </ButtonLink>
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={<UserRoundPlus />}
+                      title="No users yet"
+                      description="Add a manager so someone else can raise invoices."
+                      action={
+                        canManage ? (
+                          <ButtonLink href="/users/new" variant="primary" size="sm">
+                            <Plus aria-hidden="true" />
+                            Add user
+                          </ButtonLink>
+                        ) : null
+                      }
+                    />
+                  )}
+                </TableEmptyRow>
               ) : (
                 users.map((user) => {
                   const isSelf = user.id === currentUser.id;
 
                   return (
-                    <tr key={user.id} className="border-b border-line last:border-0">
-                      <td className="px-4 py-3 font-medium text-ink">
+                    <TR key={user.id}>
+                      <TDPrimary secondary={user.phone ?? undefined}>
                         {user.name}
                         {isSelf ? (
-                          <span className="ml-2 text-xs font-normal text-ink-subtle">(you)</span>
+                          <span className="ml-2 text-xs font-normal text-fg-subtle">(you)</span>
                         ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-ink-muted">{user.email}</td>
-                      <td className="px-4 py-3 text-ink-muted">
-                        {user.roles.length > 0 ? user.roles.join(", ") : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge tone={user.is_active ? "success" : "danger"}>
-                          {user.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-ink-muted tabular-nums">
-                        {formatDate(user.last_login_at)}
-                      </td>
+                      </TDPrimary>
+
+                      <TD>{user.email}</TD>
+
+                      <TD>
+                        <div className="flex flex-wrap gap-1">
+                          {user.roles.length > 0 ? (
+                            user.roles.map((role) => <RoleBadge key={role} role={role} />)
+                          ) : (
+                            <span className="text-xs text-fg-subtle">No role</span>
+                          )}
+                        </div>
+                      </TD>
+
+                      <TD>
+                        <StatusBadge active={user.is_active} />
+                      </TD>
+
+                      <TD numeric>{formatDateTime(user.last_login_at)}</TD>
 
                       {canManage ? (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <Link
-                              href={`/users/${user.id}/edit`}
-                              className="text-sm font-medium text-brand hover:text-brand-strong"
-                            >
-                              Edit
-                            </Link>
-
-                            <UserStatusToggle
-                              userId={user.id}
-                              isActive={user.is_active}
-                              // The server enforces this too (409
-                              // CANNOT_DEACTIVATE_SELF); disabling here just
-                              // avoids offering an action that must fail.
-                              disabledReason={isSelf ? "You cannot deactivate your own account." : null}
-                            />
-                          </div>
-                        </td>
+                        <TD align="right">
+                          <UserRowActions
+                            userId={user.id}
+                            userName={user.name}
+                            isActive={user.is_active}
+                            isSelf={isSelf}
+                          />
+                        </TD>
                       ) : null}
-                    </tr>
+                    </TR>
                   );
                 })
               )}
-            </tbody>
-          </table>
-        </div>
+            </TBody>
+          </Table>
+
+          {meta && users.length > 0 ? (
+            <Pagination
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              buildHref={buildHref}
+              label="users"
+            />
+          ) : null}
+        </TableContainer>
       )}
     </div>
   );
 }
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "Never";
-  }
+function formatDateTime(value: string | null): string {
+  if (!value) return "Never";
 
   return new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { PermissionNotice } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { PermissionNotice } from "@/components/ui/feedback";
+import { BackLink, PageHeader } from "@/components/ui/page-header";
+import { CodeText } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
 import { CategoryForm } from "@/features/catalog/components/CategoryForm";
@@ -10,7 +12,7 @@ import type { Category } from "@/features/catalog/types";
 import { ApiError } from "@/lib/api-error";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Edit category · JPopular" };
+export const metadata: Metadata = { title: "Edit category" };
 
 export default async function EditCategoryPage({
   params,
@@ -36,21 +38,30 @@ export default async function EditCategoryPage({
     throw error;
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <Link href="/categories" className="text-sm text-brand hover:text-brand-strong">
-          ← Back to categories
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink">{category.name}</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          {category.products_count ?? 0} product(s) use this category.
-        </p>
-      </header>
+  const inUse = category.products_count ?? 0;
 
-      <div className="rounded-xl border border-line bg-surface p-6">
-        <CategoryForm category={category} />
-      </div>
+  return (
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <BackLink href="/categories">Back to categories</BackLink>
+
+      <PageHeader
+        title={category.name}
+        description={
+          inUse > 0
+            ? `Used by ${inUse} product${inUse === 1 ? "" : "s"}. Deactivate rather than archive while in use.`
+            : "Not used by any product yet."
+        }
+        action={
+          <div className="flex items-center gap-2">
+            <CodeText>{category.slug}</CodeText>
+            <Badge tone={category.is_active ? "success" : "neutral"} dot>
+              {category.is_active ? "Active" : "Inactive"}
+            </Badge>
+          </div>
+        }
+      />
+
+      <CategoryForm category={category} />
     </div>
   );
 }

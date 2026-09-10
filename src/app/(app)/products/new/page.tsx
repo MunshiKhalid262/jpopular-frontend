@@ -1,14 +1,17 @@
+import { Tags } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { ErrorNotice, PermissionNotice } from "@/components/ui/table";
+import { ButtonLink } from "@/components/ui/button";
+import { Card, CardBody } from "@/components/ui/card";
+import { EmptyState, PermissionNotice } from "@/components/ui/feedback";
+import { BackLink, PageHeader } from "@/components/ui/page-header";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
 import { ProductForm } from "@/features/catalog/components/ProductForm";
 import type { Brand, Category } from "@/features/catalog/types";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Add product · JPopular" };
+export const metadata: Metadata = { title: "Add product" };
 
 export default async function NewProductPage() {
   const user = await getCurrentUser();
@@ -24,41 +27,56 @@ export default async function NewProductPage() {
     apiFetch<Brand[]>("/brands?per_page=100&is_active=1"),
   ]);
 
+  // A product must belong to a category, so this is a hard prerequisite
+  // rather than a validation error to discover after filling the form.
   if (categoryResponse.data.length === 0) {
     return (
-      <div className="flex flex-col gap-4">
-        <ErrorNotice>
-          There are no active categories yet. A product must belong to a category.
-        </ErrorNotice>
-        <Link href="/categories/new" className="text-sm font-medium text-brand hover:underline">
-          Create a category first →
-        </Link>
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+        <BackLink href="/products">Back to products</BackLink>
+
+        <PageHeader title="Add product" />
+
+        <Card>
+          <CardBody className="py-14">
+            <EmptyState
+              icon={<Tags />}
+              title="Create a category first"
+              description="Every product must belong to a category, and there are no active categories yet."
+              action={
+                hasPermission(user.permissions, PERMISSIONS.categoriesManage) ? (
+                  <ButtonLink href="/categories/new" variant="primary" size="sm">
+                    Add a category
+                  </ButtonLink>
+                ) : (
+                  <ButtonLink href="/categories" variant="secondary" size="sm">
+                    View categories
+                  </ButtonLink>
+                )
+              }
+            />
+          </CardBody>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <Link href="/products" className="text-sm text-brand hover:text-brand-strong">
-          ← Back to products
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink">Add product</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          New products start with zero stock. Record opening stock in Inventory.
-        </p>
-      </header>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <BackLink href="/products">Back to products</BackLink>
 
-      <div className="rounded-xl border border-line bg-surface p-6">
-        <ProductForm
-          categories={categoryResponse.data}
-          brands={brandResponse.data}
-          canViewPurchasePrice={hasPermission(
-            user.permissions,
-            PERMISSIONS.productsViewPurchasePrice,
-          )}
-        />
-      </div>
+      <PageHeader
+        title="Add product"
+        description="New products start with zero stock. Record opening stock in Inventory."
+      />
+
+      <ProductForm
+        categories={categoryResponse.data}
+        brands={brandResponse.data}
+        canViewPurchasePrice={hasPermission(
+          user.permissions,
+          PERMISSIONS.productsViewPurchasePrice,
+        )}
+      />
     </div>
   );
 }

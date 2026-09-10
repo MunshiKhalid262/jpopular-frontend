@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { PermissionNotice } from "@/components/ui/table";
+import { PermissionNotice } from "@/components/ui/feedback";
+import { BackLink, PageHeader } from "@/components/ui/page-header";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
 import { BrandForm } from "@/features/catalog/components/BrandForm";
 
-export const metadata: Metadata = { title: "Add brand · JPopular" };
+export const metadata: Metadata = { title: "Add brand" };
 
 export default async function NewBrandPage() {
   const user = await getCurrentUser();
@@ -18,17 +18,12 @@ export default async function NewBrandPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <Link href="/brands" className="text-sm text-brand hover:text-brand-strong">
-          ← Back to brands
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink">Add brand</h1>
-      </header>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <BackLink href="/brands">Back to brands</BackLink>
 
-      <div className="rounded-xl border border-line bg-surface p-6">
-        <BrandForm />
-      </div>
+      <PageHeader title="Add brand" description="A slug is generated from the name automatically." />
+
+      <BrandForm />
     </div>
   );
 }

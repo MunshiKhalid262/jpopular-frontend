@@ -5,8 +5,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
-import { Field } from "@/components/ui/Field";
-import { Button, FormAlert, TextInput } from "@/components/ui/controls";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field, FieldSpan, FormActions, FormSection } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/feedback";
+import { Checkbox, Input } from "@/components/ui/input";
+import { notify } from "@/components/ui/toast";
 import { postJson, putJson } from "@/features/catalog/client";
 import { brandSchema, type BrandInput } from "@/features/catalog/schemas";
 import type { Brand } from "@/features/catalog/types";
@@ -45,43 +49,58 @@ export function BrandForm({ brand }: { brand?: Brand }) {
       return;
     }
 
+    notify.success(brand ? "Brand updated" : "Brand created", { description: values.name });
+
     router.push("/brands");
     router.refresh();
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex max-w-lg flex-col gap-5" noValidate>
-      {formError ? <FormAlert message={formError} /> : null}
+    <Card className="overflow-hidden">
+      <form onSubmit={handleSubmit(onSubmit)} className="px-6 pt-6" noValidate>
+        {formError ? (
+          <div className="mb-5">
+            <FormAlert message={formError} />
+          </div>
+        ) : null}
 
-      <Field label="Name" error={errors.name?.message}>
-        {(props) => (
-          <TextInput {...props} {...register("name")} disabled={isSubmitting} autoFocus />
-        )}
-      </Field>
-
-      <label className="flex items-center gap-2.5 text-sm text-ink">
-        <input
-          type="checkbox"
-          {...register("is_active")}
-          disabled={isSubmitting}
-          className="h-4 w-4 rounded border-line"
-        />
-        Active
-      </label>
-
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving…" : brand ? "Save changes" : "Create brand"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => router.push("/brands")}
-          disabled={isSubmitting}
+        <FormSection
+          title="Brand details"
+          description="Brands are optional on a product, but they keep the catalog filterable and prevent name drift."
         >
-          Cancel
-        </Button>
-      </div>
-    </form>
+          <FieldSpan>
+            <Field label="Name" error={errors.name?.message} required>
+              {(props) => (
+                <Input
+                  {...props}
+                  {...register("name")}
+                  placeholder="e.g. VoltRide"
+                  disabled={isSubmitting}
+                  autoFocus
+                />
+              )}
+            </Field>
+          </FieldSpan>
+
+          <FieldSpan>
+            <Checkbox
+              label="Active"
+              description="Inactive brands cannot be assigned to new products."
+              {...register("is_active")}
+              disabled={isSubmitting}
+            />
+          </FieldSpan>
+        </FormSection>
+
+        <FormActions>
+          <Button variant="secondary" onClick={() => router.push("/brands")} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={isSubmitting}>
+            {brand ? "Save changes" : "Create brand"}
+          </Button>
+        </FormActions>
+      </form>
+    </Card>
   );
 }

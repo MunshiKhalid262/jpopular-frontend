@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { PermissionNotice } from "@/components/ui/table";
+import { StatusBadge } from "@/components/ui/badge";
+import { PermissionNotice } from "@/components/ui/feedback";
+import { BackLink, PageHeader } from "@/components/ui/page-header";
+import { CodeText } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
 import { ProductForm } from "@/features/catalog/components/ProductForm";
@@ -10,7 +12,7 @@ import type { Brand, Category, Product } from "@/features/catalog/types";
 import { ApiError } from "@/lib/api-error";
 import { apiFetch } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Edit product · JPopular" };
+export const metadata: Metadata = { title: "Edit product" };
 
 export default async function EditProductPage({
   params,
@@ -42,26 +44,29 @@ export default async function EditProductPage({
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <header>
-        <Link href="/products" className="text-sm text-brand hover:text-brand-strong">
-          ← Back to products
-        </Link>
-        <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink">{product.name}</h1>
-        <p className="mt-1 font-mono text-xs text-ink-subtle">{product.sku}</p>
-      </header>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <BackLink href={`/products/${product.id}`}>Back to product</BackLink>
 
-      <div className="rounded-xl border border-line bg-surface p-6">
-        <ProductForm
-          product={product}
-          categories={categoryResponse.data}
-          brands={brandResponse.data}
-          canViewPurchasePrice={hasPermission(
-            user.permissions,
-            PERMISSIONS.productsViewPurchasePrice,
-          )}
-        />
-      </div>
+      <PageHeader
+        title={product.name}
+        description="Changes apply immediately. Stock is managed separately in Inventory."
+        action={
+          <div className="flex items-center gap-2">
+            <CodeText>{product.sku}</CodeText>
+            <StatusBadge active={product.is_active} />
+          </div>
+        }
+      />
+
+      <ProductForm
+        product={product}
+        categories={categoryResponse.data}
+        brands={brandResponse.data}
+        canViewPurchasePrice={hasPermission(
+          user.permissions,
+          PERMISSIONS.productsViewPurchasePrice,
+        )}
+      />
     </div>
   );
 }
