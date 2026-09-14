@@ -1,9 +1,12 @@
 import {
   Boxes,
+  Building2,
+  FileText,
   History,
   LayoutDashboard,
   Package,
   Tags,
+  UserRound,
   Users,
   Warehouse,
   type LucideIcon,
@@ -92,6 +95,23 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    heading: "Sales",
+    items: [
+      {
+        href: "/invoices",
+        label: "Invoices",
+        icon: FileText,
+        permission: PERMISSIONS.invoicesView,
+      },
+      {
+        href: "/customers",
+        label: "Customers",
+        icon: UserRound,
+        permission: PERMISSIONS.customersView,
+      },
+    ],
+  },
+  {
     heading: "Administration",
     items: [
       {
@@ -99,6 +119,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Users",
         icon: Users,
         permission: PERMISSIONS.usersView,
+      },
+      {
+        href: "/settings",
+        label: "Settings",
+        icon: Building2,
+        permission: PERMISSIONS.settingsView,
       },
     ],
   },
@@ -167,6 +193,18 @@ const ROUTE_META: Array<[RegExp, RouteMeta]> = [
   [/^\/inventory\/movements$/, { title: "Stock movements", parent: "/inventory" }],
   [/^\/inventory$/, { title: "Stock" }],
 
+  [/^\/invoices$/, { title: "Invoices" }],
+  [/^\/invoices\/new$/, { title: "New invoice", parent: "/invoices" }],
+  [/^\/invoices\/[^/]+\/edit$/, { title: "Edit invoice", parent: "/invoices" }],
+  [/^\/invoices\/[^/]+\/preview$/, { title: "Invoice preview", parent: "/invoices" }],
+  [/^\/invoices\/[^/]+$/, { title: "Invoice", parent: "/invoices" }],
+
+  [/^\/customers$/, { title: "Customers" }],
+  [/^\/customers\/new$/, { title: "Add customer", parent: "/customers" }],
+  [/^\/customers\/[^/]+\/edit$/, { title: "Edit customer", parent: "/customers" }],
+
+  [/^\/settings$/, { title: "Business settings" }],
+
   [/^\/users$/, { title: "Users" }],
   [/^\/users\/new$/, { title: "Add user", parent: "/users" }],
   [/^\/users\/[^/]+\/edit$/, { title: "Edit user", parent: "/users" }],
@@ -177,6 +215,9 @@ const SECTION_LABELS: Record<string, string> = {
   "/categories": "Categories",
   "/brands": "Brands",
   "/inventory": "Stock",
+  "/invoices": "Invoices",
+  "/customers": "Customers",
+  "/settings": "Settings",
   "/users": "Users",
   "/dashboard": "Dashboard",
 };

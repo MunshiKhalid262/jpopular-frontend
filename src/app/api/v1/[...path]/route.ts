@@ -79,13 +79,34 @@ async function proxy(request: Request, path: string[]): Promise<Response> {
     );
   }
 
-  const text = await upstream.text();
+  /*
+   * Read the response as BYTES, for the same reason the request body is read
+   * as bytes: `upstream.text()` decodes as UTF-8 and replaces every invalid
+   * sequence with U+FFFD, which destroys any binary payload. That is fine for
+   * JSON and fatal for a PDF -- an invoice download would arrive corrupt and
+   * unopenable.
+   */
+  const payload = await upstream.arrayBuffer();
 
-  const response = new NextResponse(text.length > 0 ? text : null, {
+  const responseHeaders = new Headers({
+    "Content-Type": upstream.headers.get("content-type") ?? "application/json",
+  });
+
+  // Carries the download filename for the invoice PDF. Without it the browser
+  // names the file after the route segment.
+  const disposition = upstream.headers.get("content-disposition");
+  if (disposition) {
+    responseHeaders.set("Content-Disposition", disposition);
+  }
+
+  const cacheControl = upstream.headers.get("cache-control");
+  if (cacheControl) {
+    responseHeaders.set("Cache-Control", cacheControl);
+  }
+
+  const response = new NextResponse(payload.byteLength > 0 ? payload : null, {
     status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("content-type") ?? "application/json",
-    },
+    headers: responseHeaders,
   });
 
   // A revoked or expired token must not linger in the browser.
