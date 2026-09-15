@@ -136,6 +136,7 @@ export default async function InvoiceDetailPage({
             canFinalize={canFinalize}
             canCancel={canCancel}
             canDelete={canDelete}
+            canRecordPayment={hasPermission(user.permissions, PERMISSIONS.paymentsRecord)}
           />
         </div>
       </div>

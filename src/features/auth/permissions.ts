@@ -40,10 +40,14 @@ export const PERMISSIONS = {
   paymentsRecord: "payments.record",
   paymentsVoid: "payments.void",
 
+  reportsView: "reports.view",
   reportsSales: "reports.sales",
   reportsProductWise: "reports.product_wise",
   reportsStock: "reports.stock",
   reportsGst: "reports.gst",
+  reportsPayments: "reports.payments",
+  reportsInventory: "reports.inventory",
+  reportsExport: "reports.export",
 
   usersView: "users.view",
   usersManage: "users.manage",

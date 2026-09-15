@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CheckCircle2, PencilLine, Trash2 } from "lucide-react";
+import { Ban, CheckCircle2, PencilLine, Trash2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -10,6 +10,7 @@ import { Field } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/input";
 import { notify } from "@/components/ui/toast";
 import { del, postJson } from "@/features/catalog/client";
+import { RecordPaymentDialog } from "@/features/invoicing/components/RecordPaymentDialog";
 import type { Invoice } from "@/features/invoicing/types";
 
 /**
@@ -26,22 +27,27 @@ export function InvoiceLifecycleActions({
   canFinalize,
   canCancel,
   canDelete,
+  canRecordPayment = false,
 }: {
   invoice: Invoice;
   canUpdate: boolean;
   canFinalize: boolean;
   canCancel: boolean;
   canDelete: boolean;
+  canRecordPayment?: boolean;
 }) {
   const router = useRouter();
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
   const [reason, setReason] = useState("");
 
   const isDraft = invoice.status === "draft";
   const isFinalized = invoice.status === "finalized";
+  // Only a finalized invoice with something still owing can take money.
+  const owesMoney = isFinalized && invoice.due_amount !== "0.00";
 
   async function finalize(): Promise<string | null> {
     const result = await postJson(`/invoices/${invoice.id}/finalize`, {});
@@ -102,6 +108,13 @@ export function InvoiceLifecycleActions({
         </Button>
       ) : null}
 
+      {owesMoney && canRecordPayment ? (
+        <Button variant="primary" size="sm" onClick={() => setPaymentOpen(true)}>
+          <Wallet aria-hidden="true" />
+          Record payment
+        </Button>
+      ) : null}
+
       {isFinalized && canCancel ? (
         <Button variant="secondary" size="sm" onClick={() => setCancelOpen(true)}>
           <Ban aria-hidden="true" />
@@ -152,6 +165,14 @@ export function InvoiceLifecycleActions({
           </div>
         }
         onConfirm={cancel}
+      />
+
+      <RecordPaymentDialog
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        invoiceId={invoice.id}
+        invoiceNumber={invoice.invoice_number}
+        dueAmount={invoice.due_amount}
       />
 
       <ConfirmDialog

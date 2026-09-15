@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Package,
   Tags,
+  TrendingUp,
   UserRound,
   Users,
   Warehouse,
@@ -112,6 +113,17 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    heading: "Insights",
+    items: [
+      {
+        href: "/reports",
+        label: "Reports",
+        icon: TrendingUp,
+        permission: PERMISSIONS.reportsView,
+      },
+    ],
+  },
+  {
     heading: "Administration",
     items: [
       {
@@ -203,6 +215,16 @@ const ROUTE_META: Array<[RegExp, RouteMeta]> = [
   [/^\/customers\/new$/, { title: "Add customer", parent: "/customers" }],
   [/^\/customers\/[^/]+\/edit$/, { title: "Edit customer", parent: "/customers" }],
 
+  // Most specific first: /reports would otherwise swallow its own subpages.
+  [/^\/reports\/sales$/, { title: "Sales report", parent: "/reports" }],
+  [/^\/reports\/gst$/, { title: "GST sales report", parent: "/reports" }],
+  [/^\/reports\/non-gst$/, { title: "Non-GST sales report", parent: "/reports" }],
+  [/^\/reports\/payments$/, { title: "Payment report", parent: "/reports" }],
+  [/^\/reports\/outstanding$/, { title: "Outstanding", parent: "/reports" }],
+  [/^\/reports\/inventory$/, { title: "Inventory report", parent: "/reports" }],
+  [/^\/reports\/stock-movements$/, { title: "Stock movement report", parent: "/reports" }],
+  [/^\/reports$/, { title: "Reports" }],
+
   [/^\/settings$/, { title: "Business settings" }],
 
   [/^\/users$/, { title: "Users" }],
@@ -217,6 +239,7 @@ const SECTION_LABELS: Record<string, string> = {
   "/inventory": "Stock",
   "/invoices": "Invoices",
   "/customers": "Customers",
+  "/reports": "Reports",
   "/settings": "Settings",
   "/users": "Users",
   "/dashboard": "Dashboard",
