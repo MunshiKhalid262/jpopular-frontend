@@ -13,8 +13,8 @@ import { notify } from "@/components/ui/toast";
 import { postJson, putJson } from "@/features/catalog/client";
 import type { Product } from "@/features/catalog/types";
 import { lineAmount, sumAmounts } from "@/features/invoicing/invoice-math";
-import type { Customer, Invoice } from "@/features/invoicing/types";
-import { TAX_TYPE_OPTIONS } from "@/features/invoicing/types";
+import type { Customer, Invoice, InvoiceType } from "@/features/invoicing/types";
+import { INVOICE_TYPE_OPTIONS, TAX_TYPE_OPTIONS } from "@/features/invoicing/types";
 import { formatInr } from "@/lib/money";
 
 type Line = {
@@ -24,12 +24,39 @@ type Line = {
   unit_price: string;
 };
 
+type Charge = {
+  key: string;
+  description: string;
+  amount: string;
+  gst_rate: string;
+  hsn_code: string;
+};
+
 let lineKey = 0;
 const nextKey = () => `line-${lineKey++}`;
 
 function emptyLine(): Line {
   return { key: nextKey(), product_id: "", quantity: "1", unit_price: "" };
 }
+
+function emptyCharge(): Charge {
+  return { key: nextKey(), description: "", amount: "", gst_rate: "18", hsn_code: "" };
+}
+
+/** Transport fields, rendered only for a dealer invoice. */
+const TRANSPORT_FIELDS = [
+  { name: "eway_bill_no", label: "e-Way Bill No.", hint: "From the government portal." },
+  { name: "vehicle_no", label: "Motor Vehicle No." },
+  { name: "dispatched_through", label: "Dispatched through", placeholder: "BY ROAD" },
+  { name: "destination", label: "Destination" },
+  { name: "lr_rr_no", label: "Bill of Lading / LR-RR No." },
+  { name: "delivery_note", label: "Delivery Note" },
+  { name: "dispatch_doc_no", label: "Dispatch Doc No." },
+  { name: "buyer_order_no", label: "Buyer's Order No." },
+  { name: "terms_of_delivery", label: "Terms of Delivery" },
+  { name: "mode_of_payment", label: "Mode/Terms of Payment" },
+  { name: "other_references", label: "Other References" },
+] as const;
 
 /**
  * Create or edit a DRAFT invoice.
@@ -55,7 +82,39 @@ export function InvoiceForm({
   const editing = Boolean(invoice);
 
   const [customerId, setCustomerId] = useState(invoice?.customer_id?.toString() ?? "");
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>(invoice?.invoice_type ?? "customer");
   const [taxType, setTaxType] = useState(invoice?.tax_type ?? (canIssueGst ? "gst" : "non_gst"));
+
+  // Consignee and transport, kept as one bag since they move together and are
+  // only meaningful on a dealer invoice.
+  const [transport, setTransport] = useState<Record<string, string>>(() => {
+    const seed: Record<string, string> = {};
+
+    for (const field of TRANSPORT_FIELDS) {
+      seed[field.name] = (invoice?.[field.name as keyof Invoice] as string | null) ?? "";
+    }
+
+    seed.consignee_name = invoice?.consignee_name ?? "";
+    seed.consignee_address = invoice?.consignee_address ?? "";
+    seed.consignee_gstin = invoice?.consignee_gstin ?? "";
+    seed.consignee_state_code = invoice?.consignee_state_code ?? "";
+    seed.irn = invoice?.irn ?? "";
+    seed.ack_no = invoice?.ack_no ?? "";
+
+    return seed;
+  });
+
+  const [charges, setCharges] = useState<Charge[]>(
+    invoice?.charges?.length
+      ? invoice.charges.map((charge) => ({
+          key: nextKey(),
+          description: charge.description,
+          amount: charge.taxable_amount,
+          gst_rate: charge.gst_rate,
+          hsn_code: charge.hsn_code ?? "",
+        }))
+      : [],
+  );
   const [invoiceDate, setInvoiceDate] = useState(
     invoice?.invoice_date ?? new Date().toISOString().slice(0, 10),
   );
@@ -115,12 +174,34 @@ export function InvoiceForm({
     setFormError(null);
     setFieldErrors({});
 
+    // Transport fields are only sent for a dealer invoice, so switching a
+    // draft back to customer does not leave stale dispatch details behind.
+    const transportPayload =
+      invoiceType === "dealer"
+        ? Object.fromEntries(
+            Object.entries(transport).map(([key, value]) => [
+              key,
+              value.trim() === "" ? null : value.trim(),
+            ]),
+          )
+        : {};
+
     const payload = {
       customer_id: customerId === "" ? null : Number(customerId),
+      invoice_type: invoiceType,
       tax_type: taxType,
       invoice_date: invoiceDate,
       discount_amount: discount.trim() === "" ? null : discount.trim(),
       notes: notes.trim() === "" ? null : notes.trim(),
+      ...transportPayload,
+      charges: charges
+        .filter((charge) => charge.description.trim() !== "" && charge.amount.trim() !== "")
+        .map((charge) => ({
+          description: charge.description.trim(),
+          amount: charge.amount.trim(),
+          gst_rate: charge.gst_rate.trim() === "" ? null : charge.gst_rate.trim(),
+          hsn_code: charge.hsn_code.trim() === "" ? null : charge.hsn_code.trim(),
+        })),
       lines: lines
         .filter((line) => line.product_id !== "")
         .map((line) => ({
@@ -179,6 +260,28 @@ export function InvoiceForm({
       ) : null}
 
       <FormSection title="Invoice" description="Who it is for and how it is taxed.">
+        <Field
+          label="Invoice type"
+          required
+          hint={INVOICE_TYPE_OPTIONS.find((o) => o.value === invoiceType)?.hint}
+          error={fieldErrors.invoice_type?.[0]}
+        >
+          {(props) => (
+            <Select
+              {...props}
+              value={invoiceType}
+              onChange={(event) => setInvoiceType(event.currentTarget.value as InvoiceType)}
+              disabled={pending}
+            >
+              {INVOICE_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
         <Field label="Customer" hint="Leave empty for a walk-in counter sale.">
           {(props) => (
             <Select
@@ -346,6 +449,250 @@ export function InvoiceForm({
           </p>
         </div>
       </Card>
+
+      {/* ------------------------------------------- charges (optional) */}
+      <Card className="p-4">
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-fg">Additional charges</h2>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setCharges((current) => [...current, emptyCharge()])}
+            disabled={pending}
+          >
+            <Plus aria-hidden="true" />
+            Add charge
+          </Button>
+        </div>
+        <p className="mb-3 text-xs text-fg-subtle">
+          Optional. Insurance, freight or handling, each taxed at its own GST rate — an 18%
+          service on a 5% scooter appears as its own row in the tax summary.
+        </p>
+
+        {charges.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border px-3 py-2.5 text-[0.8125rem] text-fg-muted">
+            No extra charges on this invoice.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {charges.map((charge, index) => (
+              <div
+                key={charge.key}
+                className="grid gap-2 rounded-lg border border-border bg-surface-muted p-3 md:grid-cols-[minmax(0,1fr)_7rem_6rem_7rem_2.5rem] md:items-end"
+              >
+                <Field
+                  label={index === 0 ? "Description" : ""}
+                  error={fieldErrors[`charges.${index}.description`]?.[0]}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      value={charge.description}
+                      onChange={(e) =>
+                        setCharges((c) =>
+                          c.map((x) =>
+                            x.key === charge.key ? { ...x, description: e.currentTarget.value } : x,
+                          ),
+                        )
+                      }
+                      placeholder="Insurance Charges on Sales"
+                      disabled={pending}
+                    />
+                  )}
+                </Field>
+
+                <Field
+                  label={index === 0 ? "Amount" : ""}
+                  error={fieldErrors[`charges.${index}.amount`]?.[0]}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      value={charge.amount}
+                      onChange={(e) =>
+                        setCharges((c) =>
+                          c.map((x) =>
+                            x.key === charge.key ? { ...x, amount: e.currentTarget.value } : x,
+                          ),
+                        )
+                      }
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      disabled={pending}
+                    />
+                  )}
+                </Field>
+
+                <Field
+                  label={index === 0 ? "GST %" : ""}
+                  error={fieldErrors[`charges.${index}.gst_rate`]?.[0]}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      value={charge.gst_rate}
+                      onChange={(e) =>
+                        setCharges((c) =>
+                          c.map((x) =>
+                            x.key === charge.key ? { ...x, gst_rate: e.currentTarget.value } : x,
+                          ),
+                        )
+                      }
+                      inputMode="decimal"
+                      disabled={pending}
+                    />
+                  )}
+                </Field>
+
+                <Field
+                  label={index === 0 ? "SAC code" : ""}
+                  error={fieldErrors[`charges.${index}.hsn_code`]?.[0]}
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      value={charge.hsn_code}
+                      onChange={(e) =>
+                        setCharges((c) =>
+                          c.map((x) =>
+                            x.key === charge.key ? { ...x, hsn_code: e.currentTarget.value } : x,
+                          ),
+                        )
+                      }
+                      inputMode="numeric"
+                      placeholder="997135"
+                      disabled={pending}
+                    />
+                  )}
+                </Field>
+
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove charge ${index + 1}`}
+                  disabled={pending}
+                  onClick={() => setCharges((c) => c.filter((x) => x.key !== charge.key))}
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ---------------------------------- dealer: consignee + transport */}
+      {invoiceType === "dealer" ? (
+        <>
+          <FormSection
+            title="Consignee (Ship to)"
+            description="Where the goods actually go, when that differs from the billing party. Leave empty to ship to the buyer."
+          >
+            <Field label="Consignee name" error={fieldErrors.consignee_name?.[0]}>
+              {(props) => (
+                <Input
+                  {...props}
+                  value={transport.consignee_name}
+                  onChange={(e) => setTransport((t) => ({ ...t, consignee_name: e.currentTarget.value }))}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field label="Consignee address" error={fieldErrors.consignee_address?.[0]}>
+              {(props) => (
+                <Textarea
+                  {...props}
+                  value={transport.consignee_address}
+                  onChange={(e) => setTransport((t) => ({ ...t, consignee_address: e.currentTarget.value }))}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field label="Consignee GSTIN" error={fieldErrors.consignee_gstin?.[0]}>
+              {(props) => (
+                <Input
+                  {...props}
+                  value={transport.consignee_gstin}
+                  onChange={(e) =>
+                    setTransport((t) => ({ ...t, consignee_gstin: e.currentTarget.value.toUpperCase() }))
+                  }
+                  maxLength={15}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field
+              label="Consignee state code"
+              hint="Two digits, e.g. 19 for West Bengal."
+              error={fieldErrors.consignee_state_code?.[0]}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  value={transport.consignee_state_code}
+                  onChange={(e) =>
+                    setTransport((t) => ({ ...t, consignee_state_code: e.currentTarget.value }))
+                  }
+                  maxLength={2}
+                  inputMode="numeric"
+                  disabled={pending}
+                />
+              )}
+            </Field>
+          </FormSection>
+
+          <FormSection
+            title="Transport & dispatch"
+            description="Printed on the dealer invoice and its e-Way Bill page. The e-Way Bill and IRN are generated on the government portal and typed in here."
+          >
+            {TRANSPORT_FIELDS.map((field) => (
+              <Field
+                key={field.name}
+                label={field.label}
+                hint={"hint" in field ? field.hint : undefined}
+                error={fieldErrors[field.name]?.[0]}
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={transport[field.name] ?? ""}
+                    onChange={(e) =>
+                      setTransport((t) => ({ ...t, [field.name]: e.currentTarget.value }))
+                    }
+                    placeholder={"placeholder" in field ? field.placeholder : undefined}
+                    disabled={pending}
+                  />
+                )}
+              </Field>
+            ))}
+
+            <Field label="IRN" hint="From the e-invoice portal, if registered." error={fieldErrors.irn?.[0]}>
+              {(props) => (
+                <Input
+                  {...props}
+                  value={transport.irn}
+                  onChange={(e) => setTransport((t) => ({ ...t, irn: e.currentTarget.value }))}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field label="Ack No." error={fieldErrors.ack_no?.[0]}>
+              {(props) => (
+                <Input
+                  {...props}
+                  value={transport.ack_no}
+                  onChange={(e) => setTransport((t) => ({ ...t, ack_no: e.currentTarget.value }))}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+          </FormSection>
+        </>
+      ) : null}
 
       <FormSection title="Adjustments" description="Optional discount and a note for the invoice.">
         <Field

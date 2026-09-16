@@ -111,10 +111,20 @@ export default async function InvoiceDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <InvoiceStatusBadge status={invoice.status} />
+          {/* Dealer is the exception worth flagging; a customer bill is the
+              normal case and stays quiet. */}
+          <Badge tone={invoice.invoice_type === "dealer" ? "primary" : "neutral"} size="sm">
+            {invoice.invoice_type === "dealer" ? "Dealer" : "Customer"}
+          </Badge>
           <TaxTypeBadge taxType={invoice.tax_type} />
           {gst && invoice.supply_type ? (
             <Badge tone="neutral" size="sm">
               {interState ? "Inter-state (IGST)" : "Intra-state (CGST + SGST)"}
+            </Badge>
+          ) : null}
+          {invoice.prices_include_tax ? (
+            <Badge tone="neutral" size="sm">
+              Prices incl. GST
             </Badge>
           ) : null}
         </div>
@@ -232,6 +242,94 @@ export default async function InvoiceDetailPage({
           </TBody>
         </Table>
       </TableContainer>
+
+      {/* --------------------------------------------- additional charges */}
+      {(invoice.charges ?? []).length > 0 ? (
+        <TableContainer>
+          <Table minWidth="40rem">
+            <THead>
+              <TH>Additional charge</TH>
+              <TH>SAC</TH>
+              <TH align="right">Amount</TH>
+              <TH align="right">GST</TH>
+              <TH align="right">Total</TH>
+            </THead>
+            <TBody>
+              {(invoice.charges ?? []).map((charge) => (
+                <TR key={charge.id}>
+                  <TD className="font-medium text-fg">{charge.description}</TD>
+                  <TD className="text-fg-muted">{charge.hsn_code ?? "—"}</TD>
+                  <TD align="right" numeric>
+                    {formatInr(charge.taxable_amount)}
+                  </TD>
+                  <TD align="right" numeric>
+                    {formatInr(charge.tax_amount)}
+                    <span className="ml-1 text-xs text-fg-subtle">
+                      {formatPercent(charge.gst_rate)}
+                    </span>
+                  </TD>
+                  <TD align="right" numeric className="font-medium text-fg">
+                    {formatInr(charge.total)}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </TableContainer>
+      ) : null}
+
+      {/* ------------------------------------------- dealer transport block */}
+      {invoice.invoice_type === "dealer" ? (
+        <Card className="p-4">
+          <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-fg-subtle">
+            Transport &amp; dispatch
+          </p>
+          <dl className="grid gap-x-6 gap-y-2 text-[0.8125rem] sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ["e-Way Bill No.", invoice.eway_bill_no],
+              ["Motor Vehicle No.", invoice.vehicle_no],
+              ["Dispatched through", invoice.dispatched_through],
+              ["Destination", invoice.destination],
+              ["LR-RR No.", invoice.lr_rr_no],
+              ["Delivery Note", invoice.delivery_note],
+              ["Buyer's Order No.", invoice.buyer_order_no],
+              ["Terms of Delivery", invoice.terms_of_delivery],
+              ["IRN", invoice.irn],
+            ]
+              .filter(([, value]) => Boolean(value))
+              .map(([label, value]) => (
+                <div key={label as string}>
+                  <dt className="text-fg-subtle">{label}</dt>
+                  <dd className="break-all font-medium text-fg">{value}</dd>
+                </div>
+              ))}
+          </dl>
+
+          {!invoice.eway_bill_no ? (
+            <p className="mt-3 rounded-md border border-warning-100 bg-warning-50 px-3 py-2 text-xs leading-relaxed text-warning-700">
+              No e-Way Bill number yet. Generate it on the government portal and add it here — the
+              document prints its e-Way Bill page only once the number is present.
+            </p>
+          ) : null}
+
+          {invoice.consignee_name ? (
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
+                Consignee (Ship to)
+              </p>
+              <p className="mt-1 text-[0.8125rem] font-medium text-fg">{invoice.consignee_name}</p>
+              {invoice.consignee_address ? (
+                <p className="text-[0.8125rem] text-fg-muted">{invoice.consignee_address}</p>
+              ) : null}
+              {invoice.consignee_gstin ? (
+                <p className="text-[0.8125rem] text-fg-muted">
+                  GSTIN <CodeText>{invoice.consignee_gstin}</CodeText>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       {/* ------------------------------------------------------------- totals */}
       <div className="flex justify-end">
