@@ -13,6 +13,10 @@ export type MutationFailure = {
   errors: Record<string, string[]>;
   code: string | null;
   status: number;
+  /** Ties a server error to its log line; present on 500s. */
+  reference: string | null;
+  /** The real exception, when the API is configured to expose it. */
+  debug: { exception: string; message: string; file: string; line: number } | null;
 };
 
 export type MutationResult<T> =
@@ -54,22 +58,51 @@ async function request<T>(
         errors: {},
         code: null,
         status: 0,
+        reference: null,
+        debug: null,
       },
     };
   }
 
   const payload = (await parse(response)) as
-    | { success?: boolean; data?: T; message?: string; errors?: Record<string, string[]>; code?: string }
+    | {
+        success?: boolean;
+        data?: T;
+        message?: string;
+        errors?: Record<string, string[]>;
+        code?: string;
+        reference?: string;
+        debug?: MutationFailure["debug"];
+      }
     | null;
 
   if (!response.ok) {
+    /*
+     * Prefer the real exception when the API exposes it. A 500 otherwise says
+     * only "An unexpected error occurred", which tells the operator nothing
+     * and tells whoever they report it to even less.
+     *
+     * The reference is appended either way, because it is what finds the
+     * stack trace in the log.
+     */
+    const base =
+      payload?.debug?.message ??
+      payload?.message ??
+      (response.status === 0
+        ? "Could not reach the server."
+        : `The request failed (HTTP ${response.status}).`);
+
+    const message = payload?.reference ? `${base} (ref: ${payload.reference})` : base;
+
     return {
       ok: false,
       failure: {
-        message: payload?.message ?? "The request failed. Please try again.",
+        message,
         errors: payload?.errors ?? {},
         code: payload?.code ?? null,
         status: response.status,
+        reference: payload?.reference ?? null,
+        debug: payload?.debug ?? null,
       },
     };
   }
