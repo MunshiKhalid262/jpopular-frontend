@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 
 import { CustomerDirectory } from "@/features/invoicing/components/CustomerDirectory";
 
-export const metadata: Metadata = { title: "Customers" };
+export const metadata: Metadata = { title: "Dealers" };
 
-export default async function CustomersPage({
+export default async function DealersPage({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string; search?: string }>;
 }) {
-  return <CustomerDirectory type="customer" searchParams={await searchParams} />;
+  return <CustomerDirectory type="dealer" searchParams={await searchParams} />;
 }

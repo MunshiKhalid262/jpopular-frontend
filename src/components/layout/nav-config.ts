@@ -7,6 +7,7 @@ import {
   Package,
   Tags,
   TrendingUp,
+  Truck,
   UserRound,
   Users,
   Warehouse,
@@ -108,6 +109,12 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/customers",
         label: "Customers",
         icon: UserRound,
+        permission: PERMISSIONS.customersView,
+      },
+      {
+        href: "/dealers",
+        label: "Dealers",
+        icon: Truck,
         permission: PERMISSIONS.customersView,
       },
     ],
@@ -215,6 +222,10 @@ const ROUTE_META: Array<[RegExp, RouteMeta]> = [
   [/^\/customers\/new$/, { title: "Add customer", parent: "/customers" }],
   [/^\/customers\/[^/]+\/edit$/, { title: "Edit customer", parent: "/customers" }],
 
+  [/^\/dealers$/, { title: "Dealers" }],
+  [/^\/dealers\/new$/, { title: "Add dealer", parent: "/dealers" }],
+  [/^\/dealers\/[^/]+\/edit$/, { title: "Edit dealer", parent: "/dealers" }],
+
   // Most specific first: /reports would otherwise swallow its own subpages.
   [/^\/reports\/sales$/, { title: "Sales report", parent: "/reports" }],
   [/^\/reports\/gst$/, { title: "GST sales report", parent: "/reports" }],
@@ -239,6 +250,7 @@ const SECTION_LABELS: Record<string, string> = {
   "/inventory": "Stock",
   "/invoices": "Invoices",
   "/customers": "Customers",
+  "/dealers": "Dealers",
   "/reports": "Reports",
   "/settings": "Settings",
   "/users": "Users",

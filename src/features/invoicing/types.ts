@@ -25,8 +25,17 @@ export type InvoiceType = "customer" | "dealer";
 export type SupplyType = "intra_state" | "inter_state";
 export type PaymentStatus = "unpaid" | "partially_paid" | "paid";
 
+/**
+ * A dealer is a customer with a type and a set of dispatch defaults, not a
+ * separate entity: invoices already point at customers, and a walk-in who
+ * starts buying in bulk should become a dealer without being re-keyed.
+ */
+export type CustomerType = "customer" | "dealer";
+
 export type Customer = {
   id: number;
+  type: CustomerType;
+  type_label: string;
   name: string;
   phone: string | null;
   email: string | null;
@@ -40,9 +49,65 @@ export type Customer = {
   is_active: boolean;
   /** False when the customer has no state code, which a GST invoice requires. */
   can_be_billed_with_gst: boolean;
+
+  /*
+   * Dispatch details that repeat on every supply to this dealer. The invoice
+   * form copies them in when the dealer is chosen and they stay editable
+   * there -- editing them on an invoice never writes back here.
+   *
+   * The per-trip fields (e-Way Bill, vehicle, LR-RR, order number) are
+   * deliberately absent: defaulting them would put last week's lorry on this
+   * week's invoice.
+   */
+  default_consignee_name: string | null;
+  default_consignee_address: string | null;
+  default_consignee_gstin: string | null;
+  default_consignee_state_code: string | null;
+  default_dispatched_through: string | null;
+  default_destination: string | null;
+  default_terms_of_delivery: string | null;
+  default_mode_of_payment: string | null;
+
   archived_at: string | null;
   created_at: string | null;
 };
+
+export const CUSTOMER_TYPE_OPTIONS = [
+  { value: "customer", label: "Customer" },
+  { value: "dealer", label: "Dealer" },
+] as const;
+
+/**
+ * Dealer default -> the invoice transport field it seeds.
+ *
+ * One list, used by the dealer form and the invoice form alike, so the two
+ * cannot drift apart.
+ */
+export const DEALER_DEFAULT_FIELDS = [
+  { key: "default_consignee_name", target: "consignee_name", label: "Consignee name" },
+  { key: "default_consignee_address", target: "consignee_address", label: "Consignee address" },
+  { key: "default_consignee_gstin", target: "consignee_gstin", label: "Consignee GSTIN" },
+  {
+    key: "default_consignee_state_code",
+    target: "consignee_state_code",
+    label: "Consignee state code",
+  },
+  { key: "default_dispatched_through", target: "dispatched_through", label: "Dispatched through" },
+  { key: "default_destination", target: "destination", label: "Destination" },
+  { key: "default_terms_of_delivery", target: "terms_of_delivery", label: "Terms of delivery" },
+  { key: "default_mode_of_payment", target: "mode_of_payment", label: "Mode/terms of payment" },
+] as const satisfies ReadonlyArray<{ key: keyof Customer; target: string; label: string }>;
+
+/** The dispatch details to copy onto an invoice for this dealer. */
+export function dealerInvoiceDefaults(customer: Customer): Record<string, string> {
+  const defaults: Record<string, string> = {};
+
+  for (const field of DEALER_DEFAULT_FIELDS) {
+    defaults[field.target] = customer[field.key] ?? "";
+  }
+
+  return defaults;
+}
 
 export type InvoiceItem = {
   id: number;

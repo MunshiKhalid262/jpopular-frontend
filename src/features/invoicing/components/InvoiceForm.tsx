@@ -14,7 +14,11 @@ import { postJson, putJson } from "@/features/catalog/client";
 import type { Product } from "@/features/catalog/types";
 import { lineAmount, sumAmounts } from "@/features/invoicing/invoice-math";
 import type { Customer, Invoice, InvoiceType } from "@/features/invoicing/types";
-import { INVOICE_TYPE_OPTIONS, TAX_TYPE_OPTIONS } from "@/features/invoicing/types";
+import {
+  INVOICE_TYPE_OPTIONS,
+  TAX_TYPE_OPTIONS,
+  dealerInvoiceDefaults,
+} from "@/features/invoicing/types";
 import { formatInr } from "@/lib/money";
 
 type Line = {
@@ -141,6 +145,10 @@ export function InvoiceForm({
   const productById = new Map(products.map((product) => [String(product.id), product]));
   const selectedCustomer = customers.find((c) => String(c.id) === customerId);
 
+  const dealers = customers.filter((customer) => customer.type === "dealer");
+  const walkInCustomers = customers.filter((customer) => customer.type !== "dealer");
+  const selectedDealer = selectedCustomer?.type === "dealer" ? selectedCustomer : undefined;
+
   const gst = taxType === "gst";
   // A GST invoice cannot be finalized without both state codes, so the form
   // warns before the operator builds one that will be refused.
@@ -165,6 +173,55 @@ export function InvoiceForm({
    */
   function updateTransport(name: string, value: string) {
     setTransport((current) => ({ ...current, [name]: value }));
+  }
+
+  /*
+   * Copy a dealer's stored dispatch details onto this invoice.
+   *
+   * They stay editable here and are never written back, so a one-off
+   * destination does not silently become the dealer's default. Only the
+   * details that genuinely repeat are copied -- the e-Way Bill, vehicle,
+   * LR-RR and order numbers differ on every trip and are left blank.
+   *
+   * `overwrite` is false when the operator merely switched the invoice TYPE to
+   * dealer: anything already typed is theirs and must survive. It is true when
+   * they picked a different dealer, where stale details from the previous one
+   * would be worse than an empty field.
+   */
+  function applyDealerDefaults(dealer: Customer, { overwrite }: { overwrite: boolean }) {
+    const defaults = dealerInvoiceDefaults(dealer);
+
+    setTransport((current) => {
+      const next = { ...current };
+
+      for (const [field, value] of Object.entries(defaults)) {
+        if (overwrite || (next[field] ?? "") === "") {
+          next[field] = value;
+        }
+      }
+
+      return next;
+    });
+  }
+
+  function chooseCustomer(value: string) {
+    setCustomerId(value);
+
+    const customer = customers.find((c) => String(c.id) === value);
+
+    if (customer?.type === "dealer") {
+      applyDealerDefaults(customer, { overwrite: true });
+    }
+  }
+
+  function chooseInvoiceType(value: InvoiceType) {
+    setInvoiceType(value);
+
+    // The dealer may have been picked before the type was switched, in which
+    // case the transport block appears empty until its defaults are filled.
+    if (value === "dealer" && selectedDealer) {
+      applyDealerDefaults(selectedDealer, { overwrite: false });
+    }
   }
 
   function updateCharge(key: string, patch: Partial<Charge>) {
@@ -290,7 +347,7 @@ export function InvoiceForm({
             <Select
               {...props}
               value={invoiceType}
-              onChange={(event) => setInvoiceType(event.currentTarget.value as InvoiceType)}
+              onChange={(event) => chooseInvoiceType(event.currentTarget.value as InvoiceType)}
               disabled={pending}
             >
               {INVOICE_TYPE_OPTIONS.map((option) => (
@@ -302,26 +359,55 @@ export function InvoiceForm({
           )}
         </Field>
 
-        <Field label="Customer" hint="Leave empty for a walk-in counter sale.">
+        {/*
+          * Dealers are listed first and separately on a dealer invoice, because
+          * that is who the operator is looking for. They are not the only
+          * choice though -- an existing draft may already point at a walk-in,
+          * and hiding them would strand it.
+          */}
+        <Field
+          label={invoiceType === "dealer" ? "Dealer" : "Customer"}
+          hint={
+            invoiceType === "dealer"
+              ? "Choosing a dealer fills in their consignee and transport details below."
+              : "Leave empty for a walk-in counter sale."
+          }
+        >
           {(props) => (
             <Select
               {...props}
               value={customerId}
-              onChange={(event) => setCustomerId(event.currentTarget.value)}
+              onChange={(event) => chooseCustomer(event.currentTarget.value)}
               disabled={pending}
             >
               <option value="">Walk-in customer</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                  {customer.phone ? ` · ${customer.phone}` : ""}
-                </option>
-              ))}
+
+              {dealers.length > 0 ? (
+                <optgroup label="Dealers">
+                  {dealers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                      {customer.phone ? ` · ${customer.phone}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+
+              {walkInCustomers.length > 0 ? (
+                <optgroup label="Customers">
+                  {walkInCustomers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                      {customer.phone ? ` · ${customer.phone}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </Select>
           )}
         </Field>
 
-        <Field label="Invoice type" required error={fieldErrors.tax_type?.[0]}>
+        <Field label="Tax type" required error={fieldErrors.tax_type?.[0]}>
           {(props) => (
             <Select
               {...props}
@@ -580,6 +666,29 @@ export function InvoiceForm({
       {/* ---------------------------------- dealer: consignee + transport */}
       {invoiceType === "dealer" ? (
         <>
+          {/*
+            * A way back to the dealer's stored details after editing them for
+            * this invoice, so a one-off change is not a one-way door.
+            */}
+          {selectedDealer ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted px-3.5 py-2.5 text-sm">
+              <span className="text-fg-muted">
+                Dispatch details below came from{" "}
+                <span className="font-medium text-fg">{selectedDealer.name}</span>. Editing them
+                here does not change the dealer.
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => applyDealerDefaults(selectedDealer, { overwrite: true })}
+                disabled={pending}
+              >
+                Reset to dealer defaults
+              </Button>
+            </div>
+          ) : null}
+
           <FormSection
             title="Consignee (Ship to)"
             description="Where the goods actually go, when that differs from the billing party. Leave empty to ship to the buyer."

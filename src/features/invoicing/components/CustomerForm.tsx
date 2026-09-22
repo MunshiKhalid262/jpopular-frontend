@@ -6,16 +6,28 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FormActions, FormSection } from "@/components/ui/field";
 import { FormAlert } from "@/components/ui/feedback";
-import { Checkbox, Input, Textarea } from "@/components/ui/input";
+import { Checkbox, Input, Select, Textarea } from "@/components/ui/input";
 import { notify } from "@/components/ui/toast";
 import { postJson, putJson } from "@/features/catalog/client";
-import type { Customer } from "@/features/invoicing/types";
+import {
+  CUSTOMER_TYPE_OPTIONS,
+  type Customer,
+  type CustomerType,
+} from "@/features/invoicing/types";
 
-export function CustomerForm({ customer }: { customer?: Customer }) {
+export function CustomerForm({
+  customer,
+  defaultType = "customer",
+}: {
+  customer?: Customer;
+  /** Which directory this form was opened from, for a new record. */
+  defaultType?: CustomerType;
+}) {
   const router = useRouter();
   const editing = Boolean(customer);
 
   const [values, setValues] = useState({
+    type: customer?.type ?? defaultType,
     name: customer?.name ?? "",
     phone: customer?.phone ?? "",
     email: customer?.email ?? "",
@@ -27,6 +39,15 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
     gstin: customer?.gstin ?? "",
     notes: customer?.notes ?? "",
     is_active: customer?.is_active ?? true,
+
+    default_consignee_name: customer?.default_consignee_name ?? "",
+    default_consignee_address: customer?.default_consignee_address ?? "",
+    default_consignee_gstin: customer?.default_consignee_gstin ?? "",
+    default_consignee_state_code: customer?.default_consignee_state_code ?? "",
+    default_dispatched_through: customer?.default_dispatched_through ?? "",
+    default_destination: customer?.default_destination ?? "",
+    default_terms_of_delivery: customer?.default_terms_of_delivery ?? "",
+    default_mode_of_payment: customer?.default_mode_of_payment ?? "",
   });
 
   const [pending, setPending] = useState(false);
@@ -35,6 +56,12 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
 
   const set = (patch: Partial<typeof values>) =>
     setValues((current) => ({ ...current, ...patch }));
+
+  const dealer = values.type === "dealer";
+  // Where Cancel and a successful save return to: the directory the record
+  // belongs to AFTER this save, so promoting a walk-in lands on /dealers.
+  const returnTo = dealer ? "/dealers" : "/customers";
+  const noun = dealer ? "Dealer" : "Customer";
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -65,8 +92,8 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
       return;
     }
 
-    notify.success(editing ? "Customer updated" : "Customer added");
-    router.push("/customers");
+    notify.success(editing ? `${noun} updated` : `${noun} added`);
+    router.push(returnTo);
     router.refresh();
   }
 
@@ -74,7 +101,33 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
     <form onSubmit={submit} className="flex flex-col gap-6">
       {formError ? <FormAlert message={formError} /> : null}
 
-      <FormSection title="Customer" description="Who you are billing.">
+      <FormSection title={noun} description="Who you are billing.">
+        <Field
+          label="Type"
+          required
+          hint={
+            dealer
+              ? "A dealer's dispatch details are copied onto every dealer invoice you raise for them."
+              : "A counter customer. Switch to Dealer to store repeating dispatch details."
+          }
+          error={errors.type?.[0]}
+        >
+          {(props) => (
+            <Select
+              {...props}
+              value={values.type}
+              onChange={(e) => set({ type: e.currentTarget.value as CustomerType })}
+              disabled={pending}
+            >
+              {CUSTOMER_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
         <Field label="Name" required error={errors.name?.[0]}>
           {(props) => (
             <Input
@@ -178,7 +231,11 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
           )}
         </Field>
 
-        <Field label="GSTIN" hint="15 characters, if the customer is registered." error={errors.gstin?.[0]}>
+        <Field
+          label="GSTIN"
+          hint={`15 characters, if the ${noun.toLowerCase()} is registered.`}
+          error={errors.gstin?.[0]}
+        >
           {(props) => (
             <Input
               {...props}
@@ -190,6 +247,130 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
           )}
         </Field>
       </FormSection>
+
+      {/*
+       * Dispatch defaults, for dealers only. These are copied onto a new dealer
+       * invoice and stay editable there -- changing them on an invoice never
+       * writes back here, so a one-off destination does not become the default.
+       *
+       * The per-trip fields (e-Way Bill, vehicle, LR-RR, buyer's order) are
+       * deliberately absent: defaulting those would put last week's lorry on
+       * this week's invoice.
+       */}
+      {dealer ? (
+        <FormSection
+          title="Dispatch defaults"
+          description="Filled in on every dealer invoice for this dealer, and editable there. Leave anything that changes per trip blank."
+        >
+          <Field
+            label="Consignee name"
+            hint="Who receives the goods, if that is not the dealer themselves."
+            error={errors.default_consignee_name?.[0]}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_consignee_name}
+                onChange={(e) => set({ default_consignee_name: e.currentTarget.value })}
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field label="Consignee address" error={errors.default_consignee_address?.[0]}>
+            {(props) => (
+              <Textarea
+                {...props}
+                value={values.default_consignee_address}
+                onChange={(e) => set({ default_consignee_address: e.currentTarget.value })}
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field label="Consignee GSTIN" error={errors.default_consignee_gstin?.[0]}>
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_consignee_gstin}
+                onChange={(e) =>
+                  set({ default_consignee_gstin: e.currentTarget.value.toUpperCase() })
+                }
+                maxLength={15}
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field
+            label="Consignee state code"
+            hint="Two digits, e.g. 19 for West Bengal."
+            error={errors.default_consignee_state_code?.[0]}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_consignee_state_code}
+                onChange={(e) => set({ default_consignee_state_code: e.currentTarget.value })}
+                inputMode="numeric"
+                maxLength={2}
+                placeholder="19"
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field
+            label="Dispatched through"
+            hint="How the goods usually travel."
+            error={errors.default_dispatched_through?.[0]}
+          >
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_dispatched_through}
+                onChange={(e) => set({ default_dispatched_through: e.currentTarget.value })}
+                placeholder="BY ROAD"
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field label="Destination" error={errors.default_destination?.[0]}>
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_destination}
+                onChange={(e) => set({ default_destination: e.currentTarget.value })}
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field label="Terms of delivery" error={errors.default_terms_of_delivery?.[0]}>
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_terms_of_delivery}
+                onChange={(e) => set({ default_terms_of_delivery: e.currentTarget.value })}
+                disabled={pending}
+              />
+            )}
+          </Field>
+
+          <Field label="Mode/terms of payment" error={errors.default_mode_of_payment?.[0]}>
+            {(props) => (
+              <Input
+                {...props}
+                value={values.default_mode_of_payment}
+                onChange={(e) => set({ default_mode_of_payment: e.currentTarget.value })}
+                placeholder="30 days credit"
+                disabled={pending}
+              />
+            )}
+          </Field>
+        </FormSection>
+      ) : null}
 
       <FormSection title="Other" description="Internal notes and status.">
         <Field label="Notes" error={errors.notes?.[0]}>
@@ -205,7 +386,7 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
 
         <Checkbox
           label="Active"
-          description="Inactive customers stay on historical invoices but are hidden when raising a new one."
+          description={`Inactive ${dealer ? "dealers" : "customers"} stay on historical invoices but are hidden when raising a new one.`}
           checked={values.is_active}
           onChange={(e) => set({ is_active: e.currentTarget.checked })}
           disabled={pending}
@@ -213,11 +394,16 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
       </FormSection>
 
       <FormActions>
-        <Button type="button" variant="secondary" onClick={() => router.push("/customers")} disabled={pending}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => router.push(returnTo)}
+          disabled={pending}
+        >
           Cancel
         </Button>
         <Button type="submit" variant="primary" loading={pending} disabled={pending}>
-          {editing ? "Save customer" : "Add customer"}
+          {editing ? `Save ${noun.toLowerCase()}` : `Add ${noun.toLowerCase()}`}
         </Button>
       </FormActions>
     </form>

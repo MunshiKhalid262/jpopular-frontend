@@ -8,6 +8,7 @@ import type { Product } from "@/features/catalog/types";
 import { InvoiceForm } from "@/features/invoicing/components/InvoiceForm";
 import type { BusinessSettings, Customer } from "@/features/invoicing/types";
 import { ApiError } from "@/lib/api-error";
+import { loadBillingParties } from "@/features/invoicing/billing-parties";
 import { apiFetch } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "New invoice" };
@@ -27,14 +28,14 @@ export default async function NewInvoicePage() {
   let loadError: string | null = null;
 
   try {
-    const [productResponse, customerResponse, settingsResponse] = await Promise.all([
+    const [productResponse, billingParties, settingsResponse] = await Promise.all([
       apiFetch<Product[]>("/products?per_page=100&is_active=1"),
-      apiFetch<Customer[]>("/customers?per_page=100&is_active=1"),
+      loadBillingParties(),
       apiFetch<BusinessSettings>("/settings/business"),
     ]);
 
     products = productResponse.data;
-    customers = customerResponse.data;
+    customers = billingParties;
     settings = settingsResponse.data;
   } catch (error) {
     loadError = error instanceof ApiError ? error.message : "Could not load the invoice form.";

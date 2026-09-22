@@ -10,6 +10,7 @@ import type { Product } from "@/features/catalog/types";
 import { InvoiceForm } from "@/features/invoicing/components/InvoiceForm";
 import type { BusinessSettings, Customer, Invoice } from "@/features/invoicing/types";
 import { ApiError } from "@/lib/api-error";
+import { loadBillingParties } from "@/features/invoicing/billing-parties";
 import { apiFetch } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Edit invoice" };
@@ -34,17 +35,17 @@ export default async function EditInvoicePage({
   let settings: BusinessSettings | null = null;
 
   try {
-    const [invoiceResponse, productResponse, customerResponse, settingsResponse] =
+    const [invoiceResponse, productResponse, billingParties, settingsResponse] =
       await Promise.all([
         apiFetch<Invoice>(`/invoices/${id}`),
         apiFetch<Product[]>("/products?per_page=100&is_active=1"),
-        apiFetch<Customer[]>("/customers?per_page=100&is_active=1"),
+        loadBillingParties(),
         apiFetch<BusinessSettings>("/settings/business"),
       ]);
 
     invoice = invoiceResponse.data;
     products = productResponse.data;
-    customers = customerResponse.data;
+    customers = billingParties;
     settings = settingsResponse.data;
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
