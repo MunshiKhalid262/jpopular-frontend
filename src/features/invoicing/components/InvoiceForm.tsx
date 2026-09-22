@@ -153,6 +153,26 @@ export function InvoiceForm({
     );
   }
 
+  /*
+   * These take a plain VALUE, never the event.
+   *
+   * A functional state updater is not run during the event handler -- React
+   * calls it later, while re-rendering. By then the synthetic event has been
+   * cleaned up and `event.currentTarget` is null, so reading `.value` inside
+   * the updater throws and takes the whole page down to the error boundary.
+   * Reading it synchronously in the handler and passing the string in is the
+   * fix, and is what updateLine above has always done.
+   */
+  function updateTransport(name: string, value: string) {
+    setTransport((current) => ({ ...current, [name]: value }));
+  }
+
+  function updateCharge(key: string, patch: Partial<Charge>) {
+    setCharges((current) =>
+      current.map((charge) => (charge.key === key ? { ...charge, ...patch } : charge)),
+    );
+  }
+
   function chooseProduct(key: string, productId: string) {
     const product = productById.get(productId);
 
@@ -488,13 +508,7 @@ export function InvoiceForm({
                     <Input
                       {...props}
                       value={charge.description}
-                      onChange={(e) =>
-                        setCharges((c) =>
-                          c.map((x) =>
-                            x.key === charge.key ? { ...x, description: e.currentTarget.value } : x,
-                          ),
-                        )
-                      }
+                      onChange={(e) => updateCharge(charge.key, { description: e.currentTarget.value })}
                       placeholder="Insurance Charges on Sales"
                       disabled={pending}
                     />
@@ -509,13 +523,7 @@ export function InvoiceForm({
                     <Input
                       {...props}
                       value={charge.amount}
-                      onChange={(e) =>
-                        setCharges((c) =>
-                          c.map((x) =>
-                            x.key === charge.key ? { ...x, amount: e.currentTarget.value } : x,
-                          ),
-                        )
-                      }
+                      onChange={(e) => updateCharge(charge.key, { amount: e.currentTarget.value })}
                       inputMode="decimal"
                       placeholder="0.00"
                       disabled={pending}
@@ -531,13 +539,7 @@ export function InvoiceForm({
                     <Input
                       {...props}
                       value={charge.gst_rate}
-                      onChange={(e) =>
-                        setCharges((c) =>
-                          c.map((x) =>
-                            x.key === charge.key ? { ...x, gst_rate: e.currentTarget.value } : x,
-                          ),
-                        )
-                      }
+                      onChange={(e) => updateCharge(charge.key, { gst_rate: e.currentTarget.value })}
                       inputMode="decimal"
                       disabled={pending}
                     />
@@ -552,13 +554,7 @@ export function InvoiceForm({
                     <Input
                       {...props}
                       value={charge.hsn_code}
-                      onChange={(e) =>
-                        setCharges((c) =>
-                          c.map((x) =>
-                            x.key === charge.key ? { ...x, hsn_code: e.currentTarget.value } : x,
-                          ),
-                        )
-                      }
+                      onChange={(e) => updateCharge(charge.key, { hsn_code: e.currentTarget.value })}
                       inputMode="numeric"
                       placeholder="997135"
                       disabled={pending}
@@ -593,7 +589,7 @@ export function InvoiceForm({
                 <Input
                   {...props}
                   value={transport.consignee_name}
-                  onChange={(e) => setTransport((t) => ({ ...t, consignee_name: e.currentTarget.value }))}
+                  onChange={(e) => updateTransport("consignee_name", e.currentTarget.value)}
                   disabled={pending}
                 />
               )}
@@ -604,7 +600,7 @@ export function InvoiceForm({
                 <Textarea
                   {...props}
                   value={transport.consignee_address}
-                  onChange={(e) => setTransport((t) => ({ ...t, consignee_address: e.currentTarget.value }))}
+                  onChange={(e) => updateTransport("consignee_address", e.currentTarget.value)}
                   disabled={pending}
                 />
               )}
@@ -616,7 +612,7 @@ export function InvoiceForm({
                   {...props}
                   value={transport.consignee_gstin}
                   onChange={(e) =>
-                    setTransport((t) => ({ ...t, consignee_gstin: e.currentTarget.value.toUpperCase() }))
+                    updateTransport("consignee_gstin", e.currentTarget.value.toUpperCase())
                   }
                   maxLength={15}
                   disabled={pending}
@@ -634,7 +630,7 @@ export function InvoiceForm({
                   {...props}
                   value={transport.consignee_state_code}
                   onChange={(e) =>
-                    setTransport((t) => ({ ...t, consignee_state_code: e.currentTarget.value }))
+                    updateTransport("consignee_state_code", e.currentTarget.value)
                   }
                   maxLength={2}
                   inputMode="numeric"
@@ -660,7 +656,7 @@ export function InvoiceForm({
                     {...props}
                     value={transport[field.name] ?? ""}
                     onChange={(e) =>
-                      setTransport((t) => ({ ...t, [field.name]: e.currentTarget.value }))
+                      updateTransport(field.name, e.currentTarget.value)
                     }
                     placeholder={"placeholder" in field ? field.placeholder : undefined}
                     disabled={pending}
@@ -674,7 +670,7 @@ export function InvoiceForm({
                 <Input
                   {...props}
                   value={transport.irn}
-                  onChange={(e) => setTransport((t) => ({ ...t, irn: e.currentTarget.value }))}
+                  onChange={(e) => updateTransport("irn", e.currentTarget.value)}
                   disabled={pending}
                 />
               )}
@@ -685,7 +681,7 @@ export function InvoiceForm({
                 <Input
                   {...props}
                   value={transport.ack_no}
-                  onChange={(e) => setTransport((t) => ({ ...t, ack_no: e.currentTarget.value }))}
+                  onChange={(e) => updateTransport("ack_no", e.currentTarget.value)}
                   disabled={pending}
                 />
               )}
