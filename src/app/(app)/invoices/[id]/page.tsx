@@ -312,20 +312,18 @@ export default async function InvoiceDetailPage({
             </p>
           ) : null}
 
-          {invoice.consignee_name ? (
+          {/*
+            * The consignee is the buyer -- the goods go to the party that
+            * bought them -- so the document prints the same details under
+            * both Ship to and Bill to, and there is nothing separate to show.
+            */}
+          {invoice.customer ? (
             <div className="mt-3 border-t border-border pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
                 Consignee (Ship to)
               </p>
-              <p className="mt-1 text-[0.8125rem] font-medium text-fg">{invoice.consignee_name}</p>
-              {invoice.consignee_address ? (
-                <p className="text-[0.8125rem] text-fg-muted">{invoice.consignee_address}</p>
-              ) : null}
-              {invoice.consignee_gstin ? (
-                <p className="text-[0.8125rem] text-fg-muted">
-                  GSTIN <CodeText>{invoice.consignee_gstin}</CodeText>
-                </p>
-              ) : null}
+              <p className="mt-1 text-[0.8125rem] font-medium text-fg">{invoice.customer.name}</p>
+              <p className="text-[0.8125rem] text-fg-muted">Same as the buyer.</p>
             </div>
           ) : null}
         </Card>

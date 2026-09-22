@@ -56,7 +56,7 @@ const COPY = {
     icon: <Truck />,
     emptyTitle: "No dealers yet",
     emptyBody:
-      "Add a dealer once, and raising a dealer invoice for them fills in the consignee and transport details for you.",
+      "Add a dealer once, and raising a dealer invoice for them fills in the dispatch details for you.",
     searchPlaceholder: "Search name, phone or GSTIN…",
   },
 } as const satisfies Record<CustomerType, unknown>;
@@ -237,7 +237,7 @@ function DispatchDefaultsCell({ customer }: { customer: Customer }) {
   const destination = customer.default_destination;
   const dispatchedThrough = customer.default_dispatched_through;
 
-  if (!destination && !dispatchedThrough && !customer.default_consignee_name) {
+  if (!destination && !dispatchedThrough) {
     return (
       <Badge tone="warning" size="sm">
         Not set
@@ -247,8 +247,7 @@ function DispatchDefaultsCell({ customer }: { customer: Customer }) {
 
   return (
     <span className="text-fg-muted">
-      {[dispatchedThrough, destination].filter(Boolean).join(" · ") ||
-        customer.default_consignee_name}
+      {[dispatchedThrough, destination].filter(Boolean).join(" · ")}
     </span>
   );
 }

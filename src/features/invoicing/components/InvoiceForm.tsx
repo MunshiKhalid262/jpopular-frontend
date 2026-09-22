@@ -47,16 +47,30 @@ function emptyCharge(): Charge {
   return { key: nextKey(), description: "", amount: "", gst_rate: "18", hsn_code: "" };
 }
 
-/** Transport fields, rendered only for a dealer invoice. */
+/**
+ * Transport fields, rendered only for a dealer invoice.
+ *
+ * Nothing here is generated. The e-Way Bill number, vehicle number and LR-RR
+ * come off the government portal and the carrier's own paperwork; inventing any
+ * of them would be fabricating a statutory reference. The fields that DO repeat
+ * per dealer arrive by prefill instead -- see dealerInvoiceDefaults.
+ *
+ * Each date sits beside the number it belongs to, because the printed document
+ * has a "Dated" cell next to each one. Without these inputs those cells could
+ * never be filled, and the date ends up typed into the number field.
+ */
 const TRANSPORT_FIELDS = [
   { name: "eway_bill_no", label: "e-Way Bill No.", hint: "From the government portal." },
   { name: "vehicle_no", label: "Motor Vehicle No." },
   { name: "dispatched_through", label: "Dispatched through", placeholder: "BY ROAD" },
   { name: "destination", label: "Destination" },
   { name: "lr_rr_no", label: "Bill of Lading / LR-RR No." },
+  { name: "lr_rr_date", label: "LR-RR Date", type: "date" },
   { name: "delivery_note", label: "Delivery Note" },
+  { name: "delivery_note_date", label: "Delivery Note Date", type: "date" },
   { name: "dispatch_doc_no", label: "Dispatch Doc No." },
   { name: "buyer_order_no", label: "Buyer's Order No." },
+  { name: "buyer_order_date", label: "Buyer's Order Date", type: "date" },
   { name: "terms_of_delivery", label: "Terms of Delivery" },
   { name: "mode_of_payment", label: "Mode/Terms of Payment" },
   { name: "other_references", label: "Other References" },
@@ -89,8 +103,8 @@ export function InvoiceForm({
   const [invoiceType, setInvoiceType] = useState<InvoiceType>(invoice?.invoice_type ?? "customer");
   const [taxType, setTaxType] = useState(invoice?.tax_type ?? (canIssueGst ? "gst" : "non_gst"));
 
-  // Consignee and transport, kept as one bag since they move together and are
-  // only meaningful on a dealer invoice.
+  // Transport and e-invoice details, kept as one bag since they move together
+  // and are only meaningful on a dealer invoice.
   const [transport, setTransport] = useState<Record<string, string>>(() => {
     const seed: Record<string, string> = {};
 
@@ -98,12 +112,9 @@ export function InvoiceForm({
       seed[field.name] = (invoice?.[field.name as keyof Invoice] as string | null) ?? "";
     }
 
-    seed.consignee_name = invoice?.consignee_name ?? "";
-    seed.consignee_address = invoice?.consignee_address ?? "";
-    seed.consignee_gstin = invoice?.consignee_gstin ?? "";
-    seed.consignee_state_code = invoice?.consignee_state_code ?? "";
     seed.irn = invoice?.irn ?? "";
     seed.ack_no = invoice?.ack_no ?? "";
+    seed.ack_date = invoice?.ack_date ?? "";
 
     return seed;
   });
@@ -369,7 +380,7 @@ export function InvoiceForm({
           label={invoiceType === "dealer" ? "Dealer" : "Customer"}
           hint={
             invoiceType === "dealer"
-              ? "Choosing a dealer fills in their consignee and transport details below."
+              ? "Choosing a dealer fills in their dispatch details below, and bills and ships to them."
               : "Leave empty for a walk-in counter sale."
           }
         >
@@ -663,7 +674,7 @@ export function InvoiceForm({
         )}
       </Card>
 
-      {/* ---------------------------------- dealer: consignee + transport */}
+      {/* ------------------------------------------- dealer: transport */}
       {invoiceType === "dealer" ? (
         <>
           {/*
@@ -674,8 +685,8 @@ export function InvoiceForm({
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted px-3.5 py-2.5 text-sm">
               <span className="text-fg-muted">
                 Dispatch details below came from{" "}
-                <span className="font-medium text-fg">{selectedDealer.name}</span>. Editing them
-                here does not change the dealer.
+                <span className="font-medium text-fg">{selectedDealer.name}</span>, who is also
+                the consignee. Editing them here does not change the dealer.
               </span>
               <Button
                 type="button"
@@ -688,66 +699,6 @@ export function InvoiceForm({
               </Button>
             </div>
           ) : null}
-
-          <FormSection
-            title="Consignee (Ship to)"
-            description="Where the goods actually go, when that differs from the billing party. Leave empty to ship to the buyer."
-          >
-            <Field label="Consignee name" error={fieldErrors.consignee_name?.[0]}>
-              {(props) => (
-                <Input
-                  {...props}
-                  value={transport.consignee_name}
-                  onChange={(e) => updateTransport("consignee_name", e.currentTarget.value)}
-                  disabled={pending}
-                />
-              )}
-            </Field>
-
-            <Field label="Consignee address" error={fieldErrors.consignee_address?.[0]}>
-              {(props) => (
-                <Textarea
-                  {...props}
-                  value={transport.consignee_address}
-                  onChange={(e) => updateTransport("consignee_address", e.currentTarget.value)}
-                  disabled={pending}
-                />
-              )}
-            </Field>
-
-            <Field label="Consignee GSTIN" error={fieldErrors.consignee_gstin?.[0]}>
-              {(props) => (
-                <Input
-                  {...props}
-                  value={transport.consignee_gstin}
-                  onChange={(e) =>
-                    updateTransport("consignee_gstin", e.currentTarget.value.toUpperCase())
-                  }
-                  maxLength={15}
-                  disabled={pending}
-                />
-              )}
-            </Field>
-
-            <Field
-              label="Consignee state code"
-              hint="Two digits, e.g. 19 for West Bengal."
-              error={fieldErrors.consignee_state_code?.[0]}
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  value={transport.consignee_state_code}
-                  onChange={(e) =>
-                    updateTransport("consignee_state_code", e.currentTarget.value)
-                  }
-                  maxLength={2}
-                  inputMode="numeric"
-                  disabled={pending}
-                />
-              )}
-            </Field>
-          </FormSection>
 
           <FormSection
             title="Transport & dispatch"
@@ -763,6 +714,7 @@ export function InvoiceForm({
                 {(props) => (
                   <Input
                     {...props}
+                    type={"type" in field ? field.type : undefined}
                     value={transport[field.name] ?? ""}
                     onChange={(e) =>
                       updateTransport(field.name, e.currentTarget.value)
@@ -791,6 +743,18 @@ export function InvoiceForm({
                   {...props}
                   value={transport.ack_no}
                   onChange={(e) => updateTransport("ack_no", e.currentTarget.value)}
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field label="Ack Date" error={fieldErrors.ack_date?.[0]}>
+              {(props) => (
+                <Input
+                  {...props}
+                  type="date"
+                  value={transport.ack_date}
+                  onChange={(e) => updateTransport("ack_date", e.currentTarget.value)}
                   disabled={pending}
                 />
               )}

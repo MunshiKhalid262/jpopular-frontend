@@ -55,14 +55,11 @@ export type Customer = {
    * form copies them in when the dealer is chosen and they stay editable
    * there -- editing them on an invoice never writes back here.
    *
-   * The per-trip fields (e-Way Bill, vehicle, LR-RR, order number) are
-   * deliberately absent: defaulting them would put last week's lorry on this
-   * week's invoice.
+   * There is no consignee default: the dealer IS the consignee, so the
+   * ship-to party is this record. The per-trip fields (e-Way Bill, vehicle,
+   * LR-RR, order number) are deliberately absent too -- defaulting them would
+   * put last week's lorry on this week's invoice.
    */
-  default_consignee_name: string | null;
-  default_consignee_address: string | null;
-  default_consignee_gstin: string | null;
-  default_consignee_state_code: string | null;
   default_dispatched_through: string | null;
   default_destination: string | null;
   default_terms_of_delivery: string | null;
@@ -84,26 +81,28 @@ export const CUSTOMER_TYPE_OPTIONS = [
  * cannot drift apart.
  */
 export const DEALER_DEFAULT_FIELDS = [
-  { key: "default_consignee_name", target: "consignee_name", label: "Consignee name" },
-  { key: "default_consignee_address", target: "consignee_address", label: "Consignee address" },
-  { key: "default_consignee_gstin", target: "consignee_gstin", label: "Consignee GSTIN" },
-  {
-    key: "default_consignee_state_code",
-    target: "consignee_state_code",
-    label: "Consignee state code",
-  },
   { key: "default_dispatched_through", target: "dispatched_through", label: "Dispatched through" },
   { key: "default_destination", target: "destination", label: "Destination" },
   { key: "default_terms_of_delivery", target: "terms_of_delivery", label: "Terms of delivery" },
   { key: "default_mode_of_payment", target: "mode_of_payment", label: "Mode/terms of payment" },
 ] as const satisfies ReadonlyArray<{ key: keyof Customer; target: string; label: string }>;
 
-/** The dispatch details to copy onto an invoice for this dealer. */
+/**
+ * The dispatch details to copy onto an invoice for this dealer.
+ *
+ * Mirrors Customer::invoiceDefaults() on the server, including the destination
+ * falling back to the dealer's city -- where else would the goods be going?
+ * The two must agree, or the form would prefill one thing and the API another.
+ */
 export function dealerInvoiceDefaults(customer: Customer): Record<string, string> {
   const defaults: Record<string, string> = {};
 
   for (const field of DEALER_DEFAULT_FIELDS) {
     defaults[field.target] = customer[field.key] ?? "";
+  }
+
+  if (defaults.destination === "") {
+    defaults.destination = customer.city ?? "";
   }
 
   return defaults;
@@ -204,10 +203,6 @@ export type Invoice = {
 
   /* Consignee and transport. Present on every invoice for a uniform shape;
      only a dealer invoice fills them in. */
-  consignee_name: string | null;
-  consignee_address: string | null;
-  consignee_gstin: string | null;
-  consignee_state_code: string | null;
 
   eway_bill_no: string | null;
   vehicle_no: string | null;

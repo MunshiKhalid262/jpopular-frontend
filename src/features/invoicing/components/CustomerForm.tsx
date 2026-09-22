@@ -40,10 +40,6 @@ export function CustomerForm({
     notes: customer?.notes ?? "",
     is_active: customer?.is_active ?? true,
 
-    default_consignee_name: customer?.default_consignee_name ?? "",
-    default_consignee_address: customer?.default_consignee_address ?? "",
-    default_consignee_gstin: customer?.default_consignee_gstin ?? "",
-    default_consignee_state_code: customer?.default_consignee_state_code ?? "",
     default_dispatched_through: customer?.default_dispatched_through ?? "",
     default_destination: customer?.default_destination ?? "",
     default_terms_of_delivery: customer?.default_terms_of_delivery ?? "",
@@ -253,73 +249,19 @@ export function CustomerForm({
        * invoice and stay editable there -- changing them on an invoice never
        * writes back here, so a one-off destination does not become the default.
        *
+       * There is no consignee here: the dealer IS the consignee. The goods go
+       * to the party that bought them, so the name and address above serve as
+       * both bill-to and ship-to.
+       *
        * The per-trip fields (e-Way Bill, vehicle, LR-RR, buyer's order) are
-       * deliberately absent: defaulting those would put last week's lorry on
-       * this week's invoice.
+       * deliberately absent too: defaulting those would put last week's lorry
+       * on this week's invoice.
        */}
       {dealer ? (
         <FormSection
           title="Dispatch defaults"
-          description="Filled in on every dealer invoice for this dealer, and editable there. Leave anything that changes per trip blank."
+          description="Filled in on every dealer invoice for this dealer, and editable there. The dealer is also the consignee, so the address above is used for both bill-to and ship-to."
         >
-          <Field
-            label="Consignee name"
-            hint="Who receives the goods, if that is not the dealer themselves."
-            error={errors.default_consignee_name?.[0]}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                value={values.default_consignee_name}
-                onChange={(e) => set({ default_consignee_name: e.currentTarget.value })}
-                disabled={pending}
-              />
-            )}
-          </Field>
-
-          <Field label="Consignee address" error={errors.default_consignee_address?.[0]}>
-            {(props) => (
-              <Textarea
-                {...props}
-                value={values.default_consignee_address}
-                onChange={(e) => set({ default_consignee_address: e.currentTarget.value })}
-                disabled={pending}
-              />
-            )}
-          </Field>
-
-          <Field label="Consignee GSTIN" error={errors.default_consignee_gstin?.[0]}>
-            {(props) => (
-              <Input
-                {...props}
-                value={values.default_consignee_gstin}
-                onChange={(e) =>
-                  set({ default_consignee_gstin: e.currentTarget.value.toUpperCase() })
-                }
-                maxLength={15}
-                disabled={pending}
-              />
-            )}
-          </Field>
-
-          <Field
-            label="Consignee state code"
-            hint="Two digits, e.g. 19 for West Bengal."
-            error={errors.default_consignee_state_code?.[0]}
-          >
-            {(props) => (
-              <Input
-                {...props}
-                value={values.default_consignee_state_code}
-                onChange={(e) => set({ default_consignee_state_code: e.currentTarget.value })}
-                inputMode="numeric"
-                maxLength={2}
-                placeholder="19"
-                disabled={pending}
-              />
-            )}
-          </Field>
-
           <Field
             label="Dispatched through"
             hint="How the goods usually travel."
