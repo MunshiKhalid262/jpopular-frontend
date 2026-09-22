@@ -24,6 +24,7 @@ import type {
   CustomerType,
   Pagination as PaginationMeta,
 } from "@/features/invoicing/types";
+import { DEALER_DEFAULT_FIELDS, dealerInvoiceDefaults } from "@/features/invoicing/types";
 import { ApiError } from "@/lib/api-error";
 import { apiFetch } from "@/lib/server-api";
 
@@ -229,15 +230,18 @@ export async function CustomerDirectory({
 }
 
 /**
- * Whether raising a dealer invoice will actually save the operator any typing.
- * A dealer with none of these set still works, but every dispatch detail has
- * to be keyed by hand, which is the thing dealers exist to avoid.
+ * What raising a dealer invoice will actually prefill.
+ *
+ * Shows the EFFECTIVE defaults, not the stored columns: destination falls back
+ * to the dealer's city, so a dealer with a city but no explicit destination
+ * does prefill something, and reporting "Not set" there would be a lie the
+ * operator can see through the moment they raise an invoice.
  */
 function DispatchDefaultsCell({ customer }: { customer: Customer }) {
-  const destination = customer.default_destination;
-  const dispatchedThrough = customer.default_dispatched_through;
+  const defaults = dealerInvoiceDefaults(customer);
+  const filled = DEALER_DEFAULT_FIELDS.map((field) => defaults[field.target]).filter(Boolean);
 
-  if (!destination && !dispatchedThrough) {
+  if (filled.length === 0) {
     return (
       <Badge tone="warning" size="sm">
         Not set
@@ -247,7 +251,14 @@ function DispatchDefaultsCell({ customer }: { customer: Customer }) {
 
   return (
     <span className="text-fg-muted">
-      {[dispatchedThrough, destination].filter(Boolean).join(" · ")}
+      {[defaults.dispatched_through, defaults.destination].filter(Boolean).join(" · ") ||
+        filled[0]}
+      {filled.length < DEALER_DEFAULT_FIELDS.length ? (
+        <span className="text-fg-subtle">
+          {" "}
+          · {filled.length}/{DEALER_DEFAULT_FIELDS.length}
+        </span>
+      ) : null}
     </span>
   );
 }

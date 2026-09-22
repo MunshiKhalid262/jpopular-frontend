@@ -197,11 +197,17 @@ export type Invoice = {
     state_code: string | null;
   } | null;
   customer_id: number | null;
+  /**
+   * The address as printed on THIS invoice. Null means the document falls back
+   * to the customer's own address, which is what every invoice raised before
+   * this field existed does.
+   */
+  party_address: string | null;
 
   items?: InvoiceItem[];
   charges?: InvoiceCharge[];
 
-  /* Consignee and transport. Present on every invoice for a uniform shape;
+  /* Transport and dispatch. Present on every invoice for a uniform shape;
      only a dealer invoice fills them in. */
 
   eway_bill_no: string | null;

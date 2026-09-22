@@ -48,6 +48,17 @@ function emptyCharge(): Charge {
 }
 
 /**
+ * The address to print for a customer, as the document lays it out: the street
+ * on one line, the town on the next. Prefilled into the invoice so the operator
+ * can see and correct exactly what will appear.
+ */
+function printedAddress(customer: Customer): string {
+  const place = [customer.city, customer.state, customer.pincode].filter(Boolean).join(", ");
+
+  return [customer.address, place].filter(Boolean).join("\n");
+}
+
+/**
  * Transport fields, rendered only for a dealer invoice.
  *
  * Nothing here is generated. The e-Way Bill number, vehicle number and LR-RR
@@ -138,6 +149,23 @@ export function InvoiceForm({
   );
   const [notes, setNotes] = useState(invoice?.notes ?? "");
 
+  /*
+   * The address as printed on THIS invoice. Prefilled from the customer when
+   * one is chosen and editable here; it never writes back to the customer, so
+   * a one-off delivery address does not become the dealer's permanent one.
+   *
+   * Falls back to the customer's address, so reopening a draft raised before
+   * this field existed shows what the document will actually print rather than
+   * an empty box the operator has to guess at.
+   */
+  const [partyAddress, setPartyAddress] = useState(() => {
+    if (invoice?.party_address) return invoice.party_address;
+
+    const existing = customers.find((c) => c.id === invoice?.customer_id);
+
+    return existing ? printedAddress(existing) : "";
+  });
+
   const [lines, setLines] = useState<Line[]>(
     invoice?.items?.length
       ? invoice.items.map((item) => ({
@@ -220,6 +248,11 @@ export function InvoiceForm({
 
     const customer = customers.find((c) => String(c.id) === value);
 
+    // A different party means a different address, so this overwrites rather
+    // than filling blanks -- the previous customer's address would be worse
+    // than an empty box.
+    setPartyAddress(customer ? printedAddress(customer) : "");
+
     if (customer?.type === "dealer") {
       applyDealerDefaults(customer, { overwrite: true });
     }
@@ -279,6 +312,7 @@ export function InvoiceForm({
       invoice_type: invoiceType,
       tax_type: taxType,
       invoice_date: invoiceDate,
+      party_address: partyAddress.trim() === "" ? null : partyAddress.trim(),
       discount_amount: discount.trim() === "" ? null : discount.trim(),
       notes: notes.trim() === "" ? null : notes.trim(),
       ...transportPayload,
@@ -417,6 +451,28 @@ export function InvoiceForm({
             </Select>
           )}
         </Field>
+
+        {/*
+          * The address exactly as it will print, under both Bill to and Ship
+          * to. Shown only once a party is chosen, since a walk-in has none.
+          */}
+        {selectedCustomer ? (
+          <Field
+            label="Address (as printed)"
+            hint="Prefilled from the customer. Editing it changes this invoice only, never the customer record."
+            error={fieldErrors.party_address?.[0]}
+          >
+            {(props) => (
+              <Textarea
+                {...props}
+                rows={3}
+                value={partyAddress}
+                onChange={(e) => setPartyAddress(e.currentTarget.value)}
+                disabled={pending}
+              />
+            )}
+          </Field>
+        ) : null}
 
         <Field label="Tax type" required error={fieldErrors.tax_type?.[0]}>
           {(props) => (
