@@ -19,6 +19,7 @@ import {
   TAX_TYPE_OPTIONS,
   dealerInvoiceDefaults,
 } from "@/features/invoicing/types";
+import { businessToday } from "@/lib/business-date";
 import { formatInr } from "@/lib/money";
 
 type Line = {
@@ -142,7 +143,7 @@ export function InvoiceForm({
       : [],
   );
   const [invoiceDate, setInvoiceDate] = useState(
-    invoice?.invoice_date ?? new Date().toISOString().slice(0, 10),
+    invoice?.invoice_date ?? businessToday(),
   );
   const [discount, setDiscount] = useState(
     invoice && invoice.discount_amount !== "0.00" ? invoice.discount_amount : "",
@@ -493,7 +494,18 @@ export function InvoiceForm({
           )}
         </Field>
 
-        <Field label="Invoice date" required error={fieldErrors.invoice_date?.[0]}>
+        {/*
+          * Freely back-datable: the shop writes paperwork up after the fact,
+          * and the number is allocated from the financial year of the DATE, so
+          * a back-dated invoice lands in the right year's run rather than
+          * consuming a number from this one.
+          */}
+        <Field
+          label="Invoice date"
+          required
+          hint="Set a past date to bill a supply made earlier — it is numbered in that date's financial year."
+          error={fieldErrors.invoice_date?.[0]}
+        >
           {(props) => (
             <Input
               {...props}
