@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
+import { InvoiceRowActions } from "@/features/invoicing/components/InvoiceRowActions";
 import { InvoiceFilters } from "@/features/invoicing/components/InvoiceFilters";
 import {
   InvoiceStatusBadge,
@@ -69,6 +70,8 @@ export default async function InvoicesPage({
   }
 
   const canCreate = hasPermission(user.permissions, PERMISSIONS.invoicesCreate);
+  const canUpdate = hasPermission(user.permissions, PERMISSIONS.invoicesUpdate);
+  const canDelete = hasPermission(user.permissions, PERMISSIONS.invoicesDelete);
 
   const query = new URLSearchParams({ per_page: String(PER_PAGE) });
   if (params.page) query.set("page", params.page);
@@ -104,7 +107,7 @@ export default async function InvoicesPage({
   const isFiltered = FILTER_KEYS.some((key) => Boolean(params[key]));
 
   // Number, Date, Customer, Type, Status, Total, Balance
-  const columnCount = 7;
+  const columnCount = 8;
 
   return (
     <div className="flex flex-col gap-5">
@@ -144,6 +147,9 @@ export default async function InvoicesPage({
               <TH>Status</TH>
               <TH align="right">Total</TH>
               <TH align="right">Balance</TH>
+              <TH align="right" srOnly>
+                Actions
+              </TH>
             </THead>
 
             <TBody>
@@ -215,6 +221,16 @@ export default async function InvoicesPage({
                       ) : (
                         formatInr(invoice.due_amount)
                       )}
+                    </TD>
+
+                    <TD>
+                      <InvoiceRowActions
+                        invoiceId={invoice.id}
+                        invoiceNumber={invoice.invoice_number}
+                        status={invoice.status}
+                        canUpdate={canUpdate}
+                        canDelete={canDelete}
+                      />
                     </TD>
                   </TR>
                 ))

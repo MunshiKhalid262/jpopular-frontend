@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
+import { CustomerRowActions } from "@/features/invoicing/components/CustomerRowActions";
 import type {
   Customer,
   CustomerType,
@@ -83,6 +84,8 @@ export async function CustomerDirectory({
   }
 
   const canManage = hasPermission(user.permissions, PERMISSIONS.customersManage);
+  const canDelete = hasPermission(user.permissions, PERMISSIONS.customersDelete);
+  const hasActions = canManage || canDelete;
 
   const query = new URLSearchParams({ per_page: String(PER_PAGE), type });
   if (searchParams.page) query.set("page", searchParams.page);
@@ -151,11 +154,16 @@ export async function CustomerDirectory({
               <TH>GSTIN</TH>
               {dealers ? <TH>Dispatch defaults</TH> : null}
               <TH>Status</TH>
+              {hasActions ? (
+                <TH align="right" srOnly>
+                  Actions
+                </TH>
+              ) : null}
             </THead>
 
             <TBody>
               {customers.length === 0 ? (
-                <TableEmptyRow colSpan={dealers ? 7 : 6}>
+                <TableEmptyRow colSpan={(dealers ? 7 : 6) + (hasActions ? 1 : 0)}>
                   <EmptyState
                     icon={copy.icon}
                     title={searchParams.search ? `No ${copy.title.toLowerCase()} match` : copy.emptyTitle}
@@ -202,6 +210,18 @@ export async function CustomerDirectory({
                     <TD>
                       <StatusBadge active={customer.is_active} size="sm" />
                     </TD>
+                    {hasActions ? (
+                      <TD>
+                        <CustomerRowActions
+                          id={customer.id}
+                          name={customer.name}
+                          type={customer.type}
+                          invoiceCount={customer.invoice_count}
+                          canManage={canManage}
+                          canDelete={canDelete}
+                        />
+                      </TD>
+                    ) : null}
                   </TR>
                 ))
               )}

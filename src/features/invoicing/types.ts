@@ -65,6 +65,9 @@ export type Customer = {
   default_terms_of_delivery: string | null;
   default_mode_of_payment: string | null;
 
+  /** Only present when the endpoint counted them. */
+  invoice_count?: number;
+
   archived_at: string | null;
   created_at: string | null;
 };
