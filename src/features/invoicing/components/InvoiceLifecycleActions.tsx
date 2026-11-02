@@ -86,7 +86,9 @@ export function InvoiceLifecycleActions({
       return result.failure.message;
     }
 
-    notify.success("Draft deleted");
+    notify.success(isDraft ? "Draft deleted" : "Invoice deleted", {
+      description: isDraft ? undefined : "Its stock has been returned.",
+    });
     router.push("/invoices");
 
     return null;
@@ -122,10 +124,10 @@ export function InvoiceLifecycleActions({
         </Button>
       ) : null}
 
-      {isDraft && canDelete ? (
+      {canDelete ? (
         <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
           <Trash2 aria-hidden="true" />
-          Delete draft
+          {isDraft ? "Delete draft" : "Delete invoice"}
         </Button>
       ) : null}
 
@@ -175,12 +177,34 @@ export function InvoiceLifecycleActions({
         dueAmount={invoice.due_amount}
       />
 
+      {/*
+        * What deletion costs depends entirely on whether the document was
+        * ever issued, so the dialog says which case this is rather than
+        * giving one warning that is wrong half the time.
+        */}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete this draft?"
+        title={isDraft ? "Delete this draft?" : "Delete this invoice?"}
         confirmLabel="Delete"
-        description="The draft has no invoice number and has not affected stock, so nothing is left behind. This cannot be undone."
+        description={
+          isDraft ? (
+            "The draft has no invoice number and has not affected stock, so nothing is left behind. This cannot be undone."
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p>
+                <strong className="font-medium text-fg">{invoice.invoice_number}</strong> and its
+                stock movements will be removed, and any stock it took will go back to the
+                shelf. Payments recorded against it go too.
+              </p>
+              <p>
+                Its number will not be reused, so the sequence keeps a gap — which a GST audit
+                can ask about. Cancelling instead leaves the document in place with its reason
+                recorded. This cannot be undone.
+              </p>
+            </div>
+          )
+        }
         onConfirm={destroy}
       />
     </div>

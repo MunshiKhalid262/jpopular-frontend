@@ -19,10 +19,13 @@ import type { InvoiceStatus } from "@/features/invoicing/types";
 /**
  * Row actions for one invoice in the list.
  *
- * Only a DRAFT can be deleted. A finalized invoice has been issued under a GST
- * number and has moved stock, so it is cancelled rather than removed -- the
- * number must stay in the series, or the run has a hole an auditor will ask
- * about. Cancelling lives on the invoice itself, where the reason is captured.
+ * Any status can be deleted, but they are not the same act. A draft was never
+ * issued, so removing it costs nothing. A finalized or cancelled invoice has
+ * been out in the world under a GST number: deleting it returns its stock,
+ * takes its movements and payments with it, and leaves a hole in the series
+ * that an auditor can ask about. The dialog says which case the operator is
+ * in; cancelling, which keeps the document and records a reason, stays the
+ * gentler option and lives on the invoice itself.
  */
 export function InvoiceRowActions({
   invoiceId,
@@ -50,7 +53,9 @@ export function InvoiceRowActions({
       return result.failure.message;
     }
 
-    notify.success("Draft deleted", { description: label });
+    notify.success(isDraft ? "Draft deleted" : "Invoice deleted", {
+      description: isDraft ? label : `${label} — its stock has been returned.`,
+    });
     router.refresh();
 
     return null;
@@ -78,7 +83,7 @@ export function InvoiceRowActions({
             </DropdownMenuItem>
           ) : null}
 
-          {isDraft && canDelete ? (
+          {canDelete ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -91,7 +96,7 @@ export function InvoiceRowActions({
                   setDeleteOpen(true);
                 }}
               >
-                Delete draft
+                {isDraft ? "Delete draft" : "Delete invoice"}
               </DropdownMenuItem>
             </>
           ) : null}
@@ -101,14 +106,24 @@ export function InvoiceRowActions({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete this draft?"
+        title={isDraft ? "Delete this draft?" : "Delete this invoice?"}
         confirmLabel="Delete"
         description={
-          <>
-            <strong className="font-medium text-fg">{label}</strong> has not been
-            issued — no number was taken and no stock moved — so deleting it
-            leaves no gap. It cannot be undone.
-          </>
+          isDraft ? (
+            <>
+              <strong className="font-medium text-fg">{label}</strong> has not been
+              issued — no number was taken and no stock moved — so deleting it
+              leaves no gap. It cannot be undone.
+            </>
+          ) : (
+            <>
+              <strong className="font-medium text-fg">{label}</strong>, its stock
+              movements and any payments against it will be removed, and stock it
+              took goes back to the shelf. The number is not reused, so the
+              sequence keeps a gap. Cancelling instead keeps the document and
+              records a reason. This cannot be undone.
+            </>
+          )
         }
         onConfirm={remove}
       />
