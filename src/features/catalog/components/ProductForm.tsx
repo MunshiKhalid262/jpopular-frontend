@@ -163,7 +163,7 @@ export function ProductForm({
           <Field
             label="SKU / product code"
             error={errors.sku?.message}
-            hint="Must be unique, including archived products."
+            hint="The manufacturer's code. Two products may share one — variants of the same model usually do."
             required
           >
             {(props) => (
