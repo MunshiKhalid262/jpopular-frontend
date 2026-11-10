@@ -18,6 +18,7 @@ import { FormAlert } from "@/components/ui/feedback";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { notify } from "@/components/ui/toast";
 import { postJson } from "@/features/catalog/client";
+import { businessToday } from "@/lib/business-date";
 import { previewStock, wouldGoNegative } from "@/features/inventory/stock-math";
 import {
   MANUAL_MOVEMENT_TYPES,
@@ -79,6 +80,13 @@ function MovementForm({
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
 
+  /*
+   * When the stock actually moved, which need not be today: paperwork gets
+   * written up late, and a delivery can be booked before it lands. Defaults
+   * to today in the shop's timezone.
+   */
+  const [occurredAt, setOccurredAt] = useState(businessToday());
+
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -101,6 +109,7 @@ function MovementForm({
       type,
       quantity,
       note: note.trim() === "" ? null : note.trim(),
+      occurred_at: occurredAt === "" ? null : occurredAt,
     });
 
     setPending(false);
@@ -170,6 +179,23 @@ function MovementForm({
                   placeholder="0.000"
                   inputMode="decimal"
                   autoComplete="off"
+                  disabled={pending}
+                />
+              )}
+            </Field>
+
+            <Field
+              label="Date"
+              required
+              hint="When the stock moved. Past or future — it defaults to today."
+              error={fieldErrors.occurred_at?.[0]}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  type="date"
+                  value={occurredAt}
+                  onChange={(event) => setOccurredAt(event.currentTarget.value)}
                   disabled={pending}
                 />
               )}

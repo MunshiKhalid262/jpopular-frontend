@@ -118,6 +118,11 @@ export function putJson<T>(path: string, json: unknown): Promise<MutationResult<
   return request<T>(path, { method: "PUT", json });
 }
 
+/** For a partial update, where the body carries only the fields that change. */
+export function patchJson<T>(path: string, json: unknown): Promise<MutationResult<T>> {
+  return request<T>(path, { method: "PATCH", json });
+}
+
 export function del<T>(path: string): Promise<MutationResult<T>> {
   return request<T>(path, { method: "DELETE" });
 }

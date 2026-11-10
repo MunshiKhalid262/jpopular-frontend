@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUser } from "@/features/auth/current-user";
 import { PERMISSIONS, hasPermission } from "@/features/auth/permissions";
+import { MovementDateCell } from "@/features/inventory/components/MovementDateCell";
 import { MovementFilters } from "@/features/inventory/components/MovementFilters";
 import type { Pagination as PaginationMeta, StockMovement } from "@/features/inventory/types";
 import { ApiError } from "@/lib/api-error";
@@ -74,6 +75,10 @@ export default async function StockMovementsPage({
       <PermissionNotice>You do not have permission to view stock movements.</PermissionNotice>
     );
   }
+
+  // Reading the ledger and correcting a date are different rights: a manager
+  // may need the history without being able to rewrite when things happened.
+  const canAdjust = hasPermission(user.permissions, PERMISSIONS.inventoryAdjust);
 
   const query = new URLSearchParams({ per_page: String(PER_PAGE) });
   if (params.page) query.set("page", params.page);
@@ -192,7 +197,15 @@ export default async function StockMovementsPage({
                 movements.map((movement) => (
                   <TR key={movement.id}>
                     <TD className="whitespace-nowrap text-fg-muted">
-                      {formatDateTime(movement.occurred_at)}
+                      <MovementDateCell
+                        movementId={movement.id}
+                        type={movement.type}
+                        typeLabel={movement.type_label}
+                        productName={movement.product?.name ?? "this product"}
+                        occurredAt={movement.occurred_at}
+                        display={formatDateTime(movement.occurred_at)}
+                        canAdjust={canAdjust}
+                      />
                     </TD>
 
                     <TDPrimary href={`/products/${movement.product_id}`}>
